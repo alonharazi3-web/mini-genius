@@ -8,27 +8,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Install Cordova
         run: npm install -g cordova
+
       - name: Install dependencies
         run: npm install
+
       - name: Add Android platform
         run: cordova platform add android || true
+
       - name: Build debug APK
-        run: cordova build android
+        run: cordova build android --debug
+
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find platforms/android -name "*.apk" -type f | head -1)
+          echo "path=$APK" >> $GITHUB_OUTPUT
+          cp "$APK" "mini-genius-debug.apk"
+          echo "APK: mini-genius-debug.apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: mini-genius-debug
-          path: platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          path: mini-genius-debug.apk
+          retention-days: 90

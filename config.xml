@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <widget id="com.recruit.minigenius" version="2.0.0"
   xmlns="http://www.w3.org/ns/widgets"
-  xmlns:cdv="http://cordova.apache.org/ns/1.0">
+  xmlns:cdv="http://cordova.apache.org/ns/1.0"
+  xmlns:android="http://schemas.android.com/apk/res/android">
   <name>Mini Genius</name>
   <description>HR Recruitment Management App</description>
   <content src="index.html" />
@@ -11,22 +12,36 @@
   <allow-intent href="tel:*" />
   <allow-intent href="mailto:*" />
   <allow-intent href="whatsapp://*" />
-  <allow-intent href="content://*" />
   <allow-navigation href="https://wa.me/*" />
   <preference name="Orientation" value="portrait" />
-  <preference name="SplashScreenDelay" value="3000" />
-  <preference name="FadeSplashScreen" value="true" />
-  <preference name="AutoHideSplashScreen" value="false" />
   <preference name="AndroidPersistentFileLocation" value="Compatibility" />
   <preference name="AndroidXEnabled" value="true" />
-  <preference name="GradlePluginKotlinEnabled" value="true" />
   <preference name="android-minSdkVersion" value="26" />
-  <preference name="android-targetSdkVersion" value="34" />
-  <icon src="res/icon/android/icon.png" />
-  <splash src="res/screen/android/splash.png" />
+  <preference name="android-targetSdkVersion" value="35" />
+  <preference name="StatusBarOverlaysWebView" value="false" />
+  <preference name="StatusBarBackgroundColor" value="#2E4057" />
+  <preference name="StatusBarStyle" value="lightcontent" />
+  <preference name="SplashScreenDelay" value="0" />
+  <preference name="AutoHideSplashScreen" value="true" />
+  <platform name="android">
+    <icon src="www/img/icon.png" density="ldpi" />
+    <icon src="www/img/icon.png" density="mdpi" />
+    <icon src="www/img/icon.png" density="hdpi" />
+    <icon src="www/img/icon.png" density="xhdpi" />
+    <icon src="www/img/icon.png" density="xxhdpi" />
+    <icon src="www/img/icon.png" density="xxxhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="ldpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="mdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="hdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xxhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xxxhdpi" />
+    <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+      <application android:usesCleartextTraffic="true" />
+    </edit-config>
+  </platform>
   <plugin name="cordova-plugin-file" spec="^8.1.0" />
   <plugin name="cordova-plugin-device" spec="^3.0.0" />
   <plugin name="cordova-plugin-statusbar" spec="^4.0.0" />
-  <plugin name="cordova-plugin-splashscreen" spec="^6.0.2" />
   <engine name="android" spec="^13.0.0" />
 </widget>
