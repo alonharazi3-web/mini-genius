@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<widget id="com.recruit.minigenius" version="2.0.0"
+  xmlns="http://www.w3.org/ns/widgets"
+  xmlns:cdv="http://cordova.apache.org/ns/1.0">
+  <name>Mini Genius</name>
+  <description>HR Recruitment Management App</description>
+  <content src="index.html" />
+  <access origin="*" />
+  <allow-intent href="http://*/*" />
+  <allow-intent href="https://*/*" />
+  <allow-intent href="tel:*" />
+  <allow-intent href="mailto:*" />
+  <allow-intent href="whatsapp://*" />
+  <allow-intent href="content://*" />
+  <allow-navigation href="https://wa.me/*" />
+  <preference name="Orientation" value="portrait" />
+  <preference name="SplashScreenDelay" value="3000" />
+  <preference name="FadeSplashScreen" value="true" />
+  <preference name="AutoHideSplashScreen" value="false" />
+  <preference name="AndroidPersistentFileLocation" value="Compatibility" />
+  <preference name="AndroidXEnabled" value="true" />
+  <preference name="GradlePluginKotlinEnabled" value="true" />
+  <preference name="android-minSdkVersion" value="26" />
+  <preference name="android-targetSdkVersion" value="34" />
+  <icon src="res/icon/android/icon.png" />
+  <splash src="res/screen/android/splash.png" />
+  <plugin name="cordova-plugin-file" spec="^8.1.0" />
+  <plugin name="cordova-plugin-device" spec="^3.0.0" />
+  <plugin name="cordova-plugin-statusbar" spec="^4.0.0" />
+  <plugin name="cordova-plugin-splashscreen" spec="^6.0.2" />
+  <engine name="android" spec="^13.0.0" />
+</widget>

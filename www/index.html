@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="format-detection" content="telephone=no">
+  <title>Mini Genius</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Splash Screen -->
+  <div class="splash-screen" id="splashScreen">
+    <img src="img/splash.png" alt="Mini Genius">
+  </div>
+
+  <div class="header">
+    <h1>Mini Genius</h1>
+    <span class="header-sub" id="saveIndicator"></span>
+  </div>
+  <div class="job-selector" id="jobSelector"></div>
+  <div class="tab-bar" id="tabBar"></div>
+  <div id="mainContent">
+    <div class="loading"><div class="spinner"></div><br>טוען...</div>
+  </div>
+  <button class="fab" id="fab">+</button>
+  <div class="fab-menu" id="fabMenu">
+    <button class="fab-item" onclick="Stage1.renderForm();Utils.id('fab').click();">
+      <span class="fab-icon">+</span> מועמד חדש
+    </button>
+    <button class="fab-item" onclick="App.navigate('dashboard');Utils.id('fab').click();">
+      <span class="fab-icon">D</span> דשבורד
+    </button>
+    <button class="fab-item" onclick="App.navigate('tasks');Utils.id('fab').click();">
+      <span class="fab-icon">T</span> משימות
+    </button>
+    <button class="fab-item" onclick="App.navigate('daysummary');Utils.id('fab').click();">
+      <span class="fab-icon">S</span> סיכום יום
+    </button>
+    <button class="fab-item" onclick="App.navigate('admin');Utils.id('fab').click();">
+      <span class="fab-icon">A</span> ניהול
+    </button>
+  </div>
+  <script src="cordova.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/stages.js"></script>
+  <script src="js/stage1.js"></script>
+  <script src="js/stage2.js"></script>
+  <script src="js/stage3.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/tasks.js"></script>
+  <script src="js/daysummary.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

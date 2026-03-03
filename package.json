@@ -1,0 +1,28 @@
+{
+  "name": "mini-genius",
+  "version": "2.0.0",
+  "displayName": "Mini Genius",
+  "private": true,
+  "scripts": {
+    "build": "cordova build android",
+    "build:release": "cordova build android --release"
+  },
+  "dependencies": {
+    "cordova-android": "^13.0.0",
+    "cordova-plugin-file": "^8.1.0",
+    "cordova-plugin-device": "^3.0.0",
+    "cordova-plugin-statusbar": "^4.0.0",
+    "cordova-plugin-splashscreen": "^6.0.2"
+  },
+  "cordova": {
+    "platforms": [
+      "android"
+    ],
+    "plugins": {
+      "cordova-plugin-file": {},
+      "cordova-plugin-device": {},
+      "cordova-plugin-statusbar": {},
+      "cordova-plugin-splashscreen": {}
+    }
+  }
+}
