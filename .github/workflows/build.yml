@@ -20,12 +20,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install SDK components
-        run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -43,9 +45,8 @@ jobs:
         id: apk
         run: |
           APK=$(find platforms/android -name "*.apk" -type f | head -1)
-          echo "path=$APK" >> $GITHUB_OUTPUT
           cp "$APK" "mini-genius-debug.apk"
-          echo "APK: mini-genius-debug.apk"
+          echo "APK ready"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
