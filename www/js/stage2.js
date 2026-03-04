@@ -1,14 +1,14 @@
 'use strict';
 const Stage2={
   renderDetail(c){
-    let html='';
+    var html='';
     html+=Stages.renderHistorySummary(c,2);
     html+='<div class="section-title">שיחה טלפונית</div><div class="card">';
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage2_callDone\',this)">'
-    +'<div class="cb-box '+(c.stage2_callDone?'checked':'')+'">✓</div><span class="cb-label">שיחה בוצעה</span></div>';
+    +'<div class="cb-box '+(c.stage2_callDone?'checked':'')+'">✓</div><span>שיחה בוצעה</span></div>';
     if(c.stage2_callDone)html+='<div class="info-box">✅ שיחה בוצעה '+Utils.formatDateTime(c.stage2_callAt||c.updatedAt)+'</div>';
     html+='</div>';
-    html+='<div style="padding:8px 12px;">'
+    html+='<div style="padding:8px 14px;">'
     +'<button class="btn btn-primary" style="width:100%;" onclick="Stage2.openQuestionnaire(\''+c.id+'\')">📝 שאלון</button></div>';
     if(c.stage2_q_age){
       html+='<div class="card"><div style="font-weight:700;margin-bottom:8px;">סיכום שאלון</div>'
@@ -20,142 +20,109 @@ const Stage2={
   },
 
   async openQuestionnaire(id){
-    const c=await DB.getCandidate(id);
-    const q=f=>c['stage2_q_'+f]||'';
-    let html='<div class="page active" style="padding-bottom:100px;">'
-    +'<div style="display:flex;align-items:center;gap:10px;padding:12px;">'
+    var c=await DB.getCandidate(id);
+    var q=function(f){return c['stage2_q_'+f]||''};
+    var page=Utils.id('mainContent');
+    var html='<div class="page active" style="padding-bottom:100px;">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.renderCandidateView(\''+id+'\')">←</button>'
-    +'<div style="font-size:1.1rem;font-weight:700;">שאלון — '+Utils.escHtml(c.name)+'</div></div>';
+    +'<div style="font-size:1.15rem;font-weight:700;">שאלון — '+Utils.escHtml(c.name)+'</div></div>';
 
     // Personal
     html+='<div class="section-title">פרטים אישיים</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">גיל <span class="required">*</span></label>'
-    +'<input class="form-input" type="number" id="q_age" value="'+q('age')+'" min="18" max="45"></div>';
-    html+='<div class="form-group"><label class="form-label">מצב משפחתי</label><div class="radio-group" id="q_marital">';
-    for(const[v,l]of[['single','רווק'],['married','נשוי'],['engaged','מאורס'],['partner','זוגיות']]){
-      html+='<div class="radio-btn '+(q('marital')===v?'active':'')+'" data-val="'+v+'" onclick="Stage2._radio(this)">'+l+'</div>';}
-    html+='</div></div>';
-    html+='<div class="conditional '+(q('marital')&&q('marital')!=='single'?'show':'')+'" id="q_marital_cond">'
-    +'<div class="form-group"><label class="form-label">שוחח עם בן/בת זוג?</label><div class="radio-group" id="q_partnerDiscuss">'
-    +'<div class="radio-btn '+(q('partnerDiscuss')==='yes'?'active':'')+'" data-val="yes" onclick="Stage2._radio(this)">כן</div>'
-    +'<div class="radio-btn '+(q('partnerDiscuss')==='no'?'active':'')+'" data-val="no" onclick="Stage2._radio(this)">לא</div></div></div></div>';
-    html+='<div class="conditional '+(q('marital')==='married'?'show':'')+'" id="q_children_cond">'
-    +'<div class="form-group"><label class="form-label">מספר ילדים</label><div class="scale-group" id="q_children">';
-    for(let n=0;n<=5;n++)html+='<div class="scale-btn '+(q('children')===String(n)?'active':'')+'" data-val="'+n+'" onclick="Stage2._scale(this)">'+n+'</div>';
-    html+='</div></div></div></div>';
-
-    // Job Requirements
-    html+='<div class="section-title">הבנת תנאי תפקיד</div><div class="card">';
-    html+=Stage2._yn('relocate','מוכן לעבור למרכז',q);
-    html+=Stage2._yn('fulltime','משרה מלאה כולל שבתות, חגים, שעות בלתי שגרתיות',q);
-    html+=Stage2._yn('license','רישיון נהיגה',q);
-    html+=Stage2._yn('clicense','רישיון C',q);
+    html+=Stage2._field(id,'age','גיל','number',q('age'));
+    html+=Stage2._select(id,'marital','מצב משפחתי',['רווק/ה','נשוי/אה','גרוש/ה','אחר'],q('marital'));
+    html+=Stage2._field(id,'children','מספר ילדים','number',q('children'));
+    html+=Stage2._field(id,'city','עיר מגורים','text',q('city'));
+    html+=Stage2._yesNo(id,'relocate','מוכנות לרילוקציה',q('relocate'));
     html+='</div>';
 
-    // Medical
-    html+='<div class="section-title">מצב רפואי</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">מצב רפואי</label><div class="radio-group" id="q_medical">'
-    +'<div class="radio-btn '+(q('medical')==='normal'?'active':'')+'" data-val="normal" onclick="Stage2._radio(this)">תקין</div>'
-    +'<div class="radio-btn '+(q('medical')==='abnormal'?'active-danger':'')+'" data-val="abnormal" onclick="Stage2._radio(this)">לא תקין</div></div></div>';
-    html+='<div class="conditional '+(q('medical')==='abnormal'?'show':'')+'" id="q_medical_cond">'
-    +'<textarea class="form-textarea" id="q_medicalDetail" rows="2">'+q('medicalDetail')+'</textarea></div>';
-    html+=Stage2._yn('fitness','עוסק בכושר באופן תדיר',q);
-    html+=Stage2._yn('idfInjured','פצוע צה"ל / נכה / ועדות רפואיות',q);
-    html+='<div class="conditional '+(q('idfInjured')==='yes'?'show':'')+'" id="q_idfInjured_cond">'
-    +'<div class="warn-box">⚠️ יידרשו אישורים רפואיים</div></div>';
-    html+=Stage2._yn('vision','בעיות ראייה / לייזר / עיוורון צבעים',q);
-    html+='<div class="conditional '+(q('vision')==='yes'?'show':'')+'" id="q_vision_cond">'
-    +'<textarea class="form-textarea" id="q_visionDetail" rows="2">'+q('visionDetail')+'</textarea></div></div>';
+    // Background
+    html+='<div class="section-title">רקע מקצועי</div><div class="card">';
+    html+=Stage2._field(id,'education','השכלה','text',q('education'));
+    html+=Stage2._field(id,'lastJob','מקום עבודה אחרון','text',q('lastJob'));
+    html+=Stage2._field(id,'experience','שנות ניסיון','text',q('experience'));
+    html+=Stage2._select(id,'license','רישיון נהיגה',['אין','פרטי','משאית','כבדה'],q('license'));
+    html+=Stage2._yesNo(id,'criminal','עבר פלילי',q('criminal'));
+    html+='</div>';
 
-    // Military & Appearance
-    html+='<div class="section-title">רקע צבאי ומראה</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">פרופיל צה"ל</label>'
-    +'<input class="form-input" id="q_idfProfile" value="'+q('idfProfile')+'"></div>';
-    html+=Stage2._yn('distinctive','סממנים ייחודיים (קעקועים/צלקות/שיער)',q);
-    html+=Stage2._yn('available','זמינות לתהליך',q);
-    html+='<div class="conditional '+(q('available')==='no'?'show':'')+'" id="q_available_cond">'
-    +'<textarea class="form-textarea" id="q_availableDetail" rows="2">'+q('availableDetail')+'</textarea></div></div>';
+    // Skills
+    html+='<div class="section-title">יכולות</div><div class="card">';
+    html+=Stage2._scale(id,'english','אנגלית',q('english'));
+    html+=Stage2._scale(id,'math','מתמטיקה',q('math'));
+    html+=Stage2._scale(id,'computer','מחשב',q('computer'));
+    // Unique identifier with conditional textbox
+    html+=Stage2._yesNoConditional(id,'uniqueMarker','סממן ייחודי',q('uniqueMarker'),q('uniqueMarkerDetail'));
+    html+='</div>';
 
-    // Education
-    html+='<div class="section-title">רקע אישי והשכלה</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">מה עושה היום</label>'
-    +'<textarea class="form-textarea" id="q_currentJob" rows="2">'+q('currentJob')+'</textarea></div>';
-    html+='<div class="form-group"><label class="form-label">קורות חיים</label>'
-    +'<textarea class="form-textarea" id="q_lifeStory" rows="3">'+q('lifeStory')+'</textarea></div>';
-    html+=Stage2._yn('bagrut','בגרות מלאה',q);
-    html+='<div class="conditional '+(q('bagrut')==='no'?'show':'')+'" id="q_bagrut_cond">'
-    +'<textarea class="form-textarea" id="q_bagrutDetail" rows="2">'+q('bagrutDetail')+'</textarea></div>';
-    html+='<div class="form-group"><label class="form-label">מקצועות מוגברים</label>'
-    +'<input class="form-input" id="q_enhanced" value="'+q('enhanced')+'"></div>';
-    html+='<div class="form-group"><label class="form-label">אנגלית (0-7)</label><div class="scale-group" id="q_english">';
-    for(let n=0;n<=7;n++)html+='<div class="scale-btn '+(q('english')===String(n)?'active':'')+'" data-val="'+n+'" onclick="Stage2._scale(this)">'+n+'</div>';
-    html+='</div></div>';
-    html+='<div class="form-group"><label class="form-label">מתמטיקה (0-5)</label><div class="scale-group" id="q_math">';
-    for(let n=0;n<=5;n++)html+='<div class="scale-btn '+(q('math')===String(n)?'active':'')+'" data-val="'+n+'" onclick="Stage2._scale(this)">'+n+'</div>';
-    html+='</div></div>';
-    html+=Stage2._yn('learningDisability','אבחון דידקטי / לקויות למידה',q);
-    html+='<div class="conditional '+(q('learningDisability')==='yes'?'show':'')+'" id="q_learningDisability_cond">'
-    +'<textarea class="form-textarea" id="q_learningDisabilityDetail" rows="2">'+q('learningDisabilityDetail')+'</textarea></div>';
-    html+=Stage2._yn('premilitary','מכינה/ישיבה/שנת שירות',q);
-    html+='<div class="conditional '+(q('premilitary')==='yes'?'show':'')+'" id="q_premilitary_cond">'
-    +'<textarea class="form-textarea" id="q_premilitaryDetail" rows="2">'+q('premilitaryDetail')+'</textarea></div></div>';
+    // Availability
+    html+='<div class="section-title">זמינות</div><div class="card">';
+    html+=Stage2._select(id,'availability','זמינות להתחלה',['מיידית','תוך שבועיים','תוך חודש','לא ידוע'],q('availability'));
+    html+=Stage2._select(id,'shifts','משמרות',['בוקר','ערב','לילה','גמיש'],q('shifts'));
+    html+=Stage2._field(id,'salaryExpect','ציפיית שכר','text',q('salaryExpect'));
+    html+='</div>';
 
-    // Military & Employment
-    html+='<div class="section-title">שירות צבאי, לימודים ותעסוקה</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">שירות צבאי מפורט</label>'
-    +'<textarea class="form-textarea" id="q_military" rows="3">'+q('military')+'</textarea></div>';
-    html+=Stage2._yn('academic','לימודים אקדמאיים',q);
-    html+='<div class="conditional '+(q('academic')==='yes'?'show':'')+'" id="q_academic_cond">'
-    +'<div class="form-group"><label class="form-label">ציון פסיכומטרי</label>'
-    +'<input class="form-input" type="number" id="q_psychometric" value="'+q('psychometric')+'"></div>'
-    +'<div class="form-group"><label class="form-label">פרטים</label>'
-    +'<textarea class="form-textarea" id="q_academicDetail" rows="2">'+q('academicDetail')+'</textarea></div></div>';
-    html+='<div class="form-group"><label class="form-label">לאחר צבא / תעסוקה / טיול</label>'
-    +'<textarea class="form-textarea" id="q_postArmy" rows="2">'+q('postArmy')+'</textarea></div></div>';
+    // Notes
+    html+='<div class="section-title">הערות</div><div class="card">';
+    html+='<div class="form-group"><textarea class="form-textarea" rows="3" onchange="Stage2._save(\''+id+'\',\'notes\',this.value)">'+Utils.escHtml(q('notes'))+'</textarea></div></div>';
 
-    // Intimate
-    html+='<div class="section-title">שאלות אינטימיות</div><div class="card">';
-    html+=Stage2._yn('intimateConsent','המועמד מסכים לענות',q);
-    html+='<div class="conditional '+(q('intimateConsent')==='yes'?'show':'')+'" id="q_intimateConsent_cond">';
-    for(const[f,l]of[['mental','בעיות נפשיות'],['drugs','סמים'],['criminal','רקע פלילי אזרחי'],['discipline','משמעת/מצ"ח בצבא']]){
-      html+=Stage2._yn(f,l,q);
-      html+='<div class="conditional '+(q(f)==='yes'?'show':'')+'" id="q_'+f+'_cond">'
-      +'<textarea class="form-textarea" id="q_'+f+'Detail" rows="2">'+q(f+'Detail')+'</textarea></div>';}
-    html+='</div></div>';
-
-    html+='<div style="padding:12px;"><button class="btn btn-primary" style="width:100%;" onclick="Stage2.saveQuestionnaire(\''+c.id+'\')">שמור שאלון</button></div></div>';
-    Utils.id('mainContent').innerHTML=html;
+    html+='<div style="padding:14px;"><button class="btn btn-success" style="width:100%;" onclick="Stage2.saveAndBack(\''+id+'\')">שמור וחזור</button></div></div>';
+    page.innerHTML=html;
   },
 
-  _yn(field,label,q){
-    return '<div class="form-group"><label class="form-label">'+label+'</label><div class="radio-group" id="q_'+field+'">'
-    +'<div class="radio-btn '+(q(field)==='yes'?'active':'')+'" data-val="yes" onclick="Stage2._radio(this)">כן</div>'
-    +'<div class="radio-btn '+(q(field)==='no'?'active':'')+'" data-val="no" onclick="Stage2._radio(this)">לא</div></div></div>';
+  _field(id,key,label,type,val){
+    return '<div class="form-group"><label class="form-label">'+label+'</label>'
+    +'<input class="form-input" type="'+(type||'text')+'" value="'+Utils.escHtml(val)+'" '
+    +'onchange="Stage2._save(\''+id+'\',\''+key+'\',this.value)"></div>';
   },
-
-  _radio(el){
-    el.parentElement.querySelectorAll('.radio-btn').forEach(b=>{b.classList.remove('active','active-success','active-danger','active-warning')});
-    el.classList.add('active');
-    const parent=el.parentElement;const id=parent.id;const val=el.dataset.val;
-    const condEl=Utils.id(id+'_cond');
-    if(condEl){
-      if(id==='q_marital'){condEl.classList.toggle('show',val!=='single');
-        const cc=Utils.id('q_children_cond');if(cc)cc.classList.toggle('show',val==='married');}
-      else condEl.classList.toggle('show',val==='yes'||val==='abnormal');
+  _select(id,key,label,opts,val){
+    var html='<div class="form-group"><label class="form-label">'+label+'</label>'
+    +'<select class="form-select" onchange="Stage2._save(\''+id+'\',\''+key+'\',this.value)">'
+    +'<option value="">בחר...</option>';
+    opts.forEach(function(o){html+='<option value="'+o+'"'+(val===o?' selected':'')+'>'+o+'</option>';});
+    return html+'</select></div>';
+  },
+  _yesNo(id,key,label,val){
+    return '<div class="form-group"><label class="form-label">'+label+'</label><div class="radio-group">'
+    +'<div class="radio-btn '+(val==='כן'?'active-success':'')+'" onclick="Stage2._saveRadio(\''+id+'\',\''+key+'\',\'\u05db\u05df\',this)">כן</div>'
+    +'<div class="radio-btn '+(val==='לא'?'active-danger':'')+'" onclick="Stage2._saveRadio(\''+id+'\',\''+key+'\',\'\u05dc\u05d0\',this)">לא</div>'
+    +'</div></div>';
+  },
+  // Yes/No with conditional textbox when "yes"
+  _yesNoConditional(id,key,label,val,detailVal){
+    var showDetail=(val==='כן');
+    return '<div class="form-group"><label class="form-label">'+label+'</label><div class="radio-group">'
+    +'<div class="radio-btn '+(val==='כן'?'active-success':'')+'" onclick="Stage2._saveRadioConditional(\''+id+'\',\''+key+'\',\'\u05db\u05df\',this)">כן</div>'
+    +'<div class="radio-btn '+(val==='לא'?'active-danger':'')+'" onclick="Stage2._saveRadioConditional(\''+id+'\',\''+key+'\',\'\u05dc\u05d0\',this)">לא</div>'
+    +'</div>'
+    +'<div class="conditional '+(showDetail?'show':'')+'" id="cond_'+key+'">'
+    +'<div class="form-group"><label class="form-label">פרט</label>'
+    +'<textarea class="form-textarea" rows="2" onchange="Stage2._save(\''+id+'\',\''+key+'Detail\',this.value)">'+Utils.escHtml(detailVal||'')+'</textarea></div></div></div>';
+  },
+  _scale(id,key,label,val){
+    var html='<div class="form-group"><label class="form-label">'+label+'</label><div class="scale-group">';
+    for(var i=1;i<=5;i++){
+      html+='<div class="scale-btn '+(parseInt(val)===i?'active':'')+'" onclick="Stage2._saveScale(\''+id+'\',\''+key+'\','+i+',this)">'+i+'</div>';
     }
+    return html+'</div></div>';
   },
-  _scale(el){el.parentElement.querySelectorAll('.scale-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');},
-
-  async saveQuestionnaire(id){
-    const c=await DB.getCandidate(id);
-    const fields=['age','marital','partnerDiscuss','children','relocate','fulltime','license','clicense',
-    'medical','medicalDetail','fitness','idfInjured','vision','visionDetail','idfProfile','distinctive','available','availableDetail',
-    'currentJob','lifeStory','bagrut','bagrutDetail','enhanced','english','math','learningDisability','learningDisabilityDetail',
-    'premilitary','premilitaryDetail','military','academic','psychometric','academicDetail','postArmy',
-    'intimateConsent','mental','mentalDetail','drugs','drugsDetail','criminal','criminalDetail','discipline','disciplineDetail'];
-    fields.forEach(f=>{const el=Utils.id('q_'+f);
-      if(!el){const a=document.querySelector('#q_'+f+' .radio-btn.active, #q_'+f+' .scale-btn.active');if(a)c['stage2_q_'+f]=a.dataset.val;}
-      else c['stage2_q_'+f]=el.value;});
-    await DB.saveCandidate(c);Utils.toast('שאלון נשמר!','success');App.renderCandidateView(id);
-  }
+  async _save(id,key,val){App.markDirty(id,'stage2_q_'+key,val);},
+  _saveRadio(id,key,val,el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.className='radio-btn'});
+    el.classList.add('radio-btn');el.classList.add(val==='כן'?'active-success':'active-danger');
+    Stage2._save(id,key,val);
+  },
+  _saveRadioConditional(id,key,val,el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.className='radio-btn'});
+    el.classList.add('radio-btn');el.classList.add(val==='כן'?'active-success':'active-danger');
+    Stage2._save(id,key,val);
+    // Show/hide conditional
+    var cond=Utils.id('cond_'+key);
+    if(cond){if(val==='כן')cond.classList.add('show');else cond.classList.remove('show');}
+  },
+  _saveScale(id,key,val,el){
+    el.parentElement.querySelectorAll('.scale-btn').forEach(function(b){b.classList.remove('active')});
+    el.classList.add('active');Stage2._save(id,key,val);
+  },
+  async saveAndBack(id){await App.flushDirty();Utils.toast('נשמר','success');App.renderCandidateView(id);}
 };

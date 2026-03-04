@@ -1,178 +1,198 @@
 'use strict';
 const Stages={
   async stopProcess(cid){
-    const c=await DB.getCandidate(cid);if(!c)return;
-    const html='<div class="modal-title">⛔ הפסקת תהליך — '+Utils.escHtml(c.name)+'</div>'
+    var c=await DB.getCandidate(cid);if(!c)return;
+    var html='<div class="modal-title">⛔ הפסקת תהליך — '+Utils.escHtml(c.name)+'</div>'
     +'<div class="form-group"><label class="form-label">סיבת הפסקה <span class="required">*</span></label>'
     +'<textarea class="form-textarea" id="stopReason" rows="3"></textarea></div>'
     +'<div class="cb-row" onclick="this.querySelector(\'.cb-box\').classList.toggle(\'checked\')">'
     +'<div class="cb-box" id="stopPhoneConfirm">✓</div>'
-    +'<span class="cb-label">הודעה טלפונית נמסרה למועמד</span></div>'
+    +'<span>הודעה טלפונית נמסרה</span></div>'
     +'<div style="display:flex;gap:8px;margin-top:16px;">'
     +'<button class="btn btn-danger" style="flex:1" onclick="Stages.confirmStop(\''+c.id+'\')">אשר הפסקה</button>'
     +'<button class="btn btn-outline" style="flex:1" onclick="Stages.closeModal()">ביטול</button></div>';
     this.showModal(html);
   },
-
   async confirmStop(id){
-    const reason=Utils.id('stopReason')?.value?.trim();
-    const phoneOk=Utils.id('stopPhoneConfirm')?.classList.contains('checked');
+    var reason=Utils.id('stopReason')?.value?.trim();
+    var phoneOk=Utils.id('stopPhoneConfirm')?.classList.contains('checked');
     if(!reason){Utils.toast('נא למלא סיבה','danger');return;}
-    if(!phoneOk){Utils.toast('נא לאשר שהודעה טלפונית נמסרה','danger');return;}
-    const c=await DB.getCandidate(id);
-    c.status='stopped';c.stopReason=reason;c.stoppedAt=new Date().toISOString();c.stopPhoneConfirmed=true;
-    await DB.saveCandidate(c);this.closeModal();Utils.toast('התהליך הופסק','success');App.navigate('stage',c.stage);
+    if(!phoneOk){Utils.toast('נא לאשר שהודעה נמסרה','danger');return;}
+    var c=await DB.getCandidate(id);
+    c.status='stopped';c.stopReason=reason;c.stoppedAt=new Date().toISOString();
+    await DB.saveCandidate(c);DB.logAction('הפסקה',c.name);
+    this.closeModal();Utils.toast('התהליך הופסק','success');App.navigate('stage',c.stage);
   },
 
-  // --- Freeze ---
   async freezeCandidate(cid){
-    const c=await DB.getCandidate(cid);if(!c)return;
-    const html='<div class="modal-title">❄️ הקפאת מועמד — '+Utils.escHtml(c.name)+'</div>'
-    +'<div class="form-group"><label class="form-label">סיבת הקפאה <span class="required">*</span></label>'
+    var c=await DB.getCandidate(cid);if(!c)return;
+    var html='<div class="modal-title">❄️ הקפאת מועמד — '+Utils.escHtml(c.name)+'</div>'
+    +'<div class="form-group"><label class="form-label">סיבה <span class="required">*</span></label>'
     +'<textarea class="form-textarea" id="freezeReason" rows="2"></textarea></div>'
-    +'<div class="form-group"><label class="form-label">תאריך סיום הקפאה <span class="required">*</span></label>'
-    +'<input type="date" class="form-input" id="freezeEndDate"></div>'
+    +'<div class="form-group"><label class="form-label">תאריך סיום הקפאה</label>'
+    +'<input class="form-input" id="freezeEnd" type="date"></div>'
     +'<div style="display:flex;gap:8px;margin-top:16px;">'
     +'<button class="btn btn-purple" style="flex:1" onclick="Stages.confirmFreeze(\''+c.id+'\')">הקפא</button>'
     +'<button class="btn btn-outline" style="flex:1" onclick="Stages.closeModal()">ביטול</button></div>';
     this.showModal(html);
   },
-
   async confirmFreeze(id){
-    const reason=Utils.id('freezeReason')?.value?.trim();
-    const endDate=Utils.id('freezeEndDate')?.value;
+    var reason=Utils.id('freezeReason')?.value?.trim();
+    var endDate=Utils.id('freezeEnd')?.value;
     if(!reason){Utils.toast('נא למלא סיבה','danger');return;}
-    if(!endDate){Utils.toast('נא לבחור תאריך סיום','danger');return;}
-    const c=await DB.getCandidate(id);
-    c.prevStatus=c.status;c.frozenFromStage=c.stage;
-    c.status='frozen';c.freezeReason=reason;c.freezeEndDate=endDate;c.frozenAt=new Date().toISOString();
-    await DB.saveCandidate(c);this.closeModal();Utils.toast('מועמד הוקפא','success');App.navigate('stage',c.stage);
+    var c=await DB.getCandidate(id);
+    c.prevStatus=c.status;c.frozenFromStage=c.stage;c.status='frozen';
+    c.freezeReason=reason;c.freezeEndDate=endDate||'';c.frozenAt=new Date().toISOString();
+    await DB.saveCandidate(c);DB.logAction('הקפאה',c.name);
+    this.closeModal();Utils.toast('מועמד הוקפא','success');App.navigate('stage',c.stage);
   },
-
   async unfreezeCandidate(cid){
-    const c=await DB.getCandidate(cid);if(!c)return;
-    const html='<div class="modal-title">❄️ ביטול הקפאה — '+Utils.escHtml(c.name)+'</div>'
-    +'<div class="info-box">סיבת הקפאה: '+Utils.escHtml(c.freezeReason||'')+'</div>'
-    +'<div style="display:flex;gap:8px;margin-top:16px;">'
-    +'<button class="btn btn-success" style="flex:1" onclick="Stages.confirmUnfreeze(\''+c.id+'\',true)">החזר + WA</button>'
-    +'<button class="btn btn-primary" style="flex:1" onclick="Stages.confirmUnfreeze(\''+c.id+'\',false)">החזר בלבד</button>'
-    +'<button class="btn btn-outline" onclick="Stages.closeModal()">ביטול</button></div>';
-    this.showModal(html);
-  },
-
-  async confirmUnfreeze(id,sendWA){
-    const c=await DB.getCandidate(id);
+    var c=await DB.getCandidate(cid);if(!c)return;
     c.status=c.prevStatus||'active';c.unfrozenAt=new Date().toISOString();
-    delete c.freezeReason;delete c.freezeEndDate;delete c.frozenAt;delete c.prevStatus;
+    await DB.saveCandidate(c);DB.logAction('ביטול הקפאה',c.name);
+    var msg=(App.settings.msgUnfreeze||'').replace('{name}',c.name);
+    if(msg)Utils.openWhatsApp(c.phone,msg);
+    Utils.toast('הוקפא בוטל','success');App.renderCandidateView(cid);
+  },
+
+  sendWhatsApp(stageId,id){
+    DB.getCandidate(id).then(function(c){if(!c)return;
+      var key='msgStage'+stageId;var msg=App.settings[key]||App.settings.msgStage1||'';
+      msg=msg.replace('{name}',c.name).replace('{stageName}',Utils.getStageName(stageId));
+      Utils.openWhatsApp(c.phone,msg);
+    });
+  },
+
+  saveField(id,field,val){
+    App.markDirty(id,field,val);Utils.toast('נשמר','success');
+  },
+
+  async toggleCheck(id,field,el){
+    var c=await DB.getCandidate(id);if(!c)return;
+    c[field]=!c[field];if(c[field])c[field+'At']=new Date().toISOString();
     await DB.saveCandidate(c);
-    if(sendWA){
-      const msg=(App.settings.msgUnfreeze||'').replace('{name}',c.name);
-      if(msg)Utils.openWhatsApp(c.phone,msg);
+    var box=el.querySelector('.cb-box');if(box)box.classList.toggle('checked');
+  },
+
+  // History with stage names instead of numbers
+  renderHistorySummary(c,currentStage){
+    var html='<div class="history-compact">';
+    for(var i=1;i<currentStage;i++){
+      var stageName=Utils.getStageName(i);
+      html+='<div>✅ '+stageName;
+      if(c['stage'+i+'_grade'])html+=' — ציון: '+c['stage'+i+'_grade']+'/10';
+      if(c['stage'+i+'_completedAt'])html+=' ('+Utils.formatDate(c['stage'+i+'_completedAt'])+')';
+      html+='</div>';
     }
-    this.closeModal();Utils.toast('מועמד הוחזר לתהליך','success');App.navigate('stage',c.stage);
+    html+='</div>';
+    return html;
   },
 
-  // --- Advance ---
-  async advanceToNextStage(id){
-    const c=await DB.getCandidate(id);if(!c||c.status!=='pass')return;
-    const next=c.stage+1;
-    if(next>7){c.status='accepted';c.acceptedAt=new Date().toISOString();await DB.saveCandidate(c);
-      Utils.toast('המועמד התקבל!','success');App.navigate('stage',7);return;}
-    c.stage=next;c.status='active';c['stage'+next+'_startedAt']=new Date().toISOString();
-    await DB.saveCandidate(c);
-    Utils.toast('הועבר לשלב '+next,'success');App.navigate('stage',next);
-  },
-
-  // --- Evaluation ---
+  // Evaluation section
   renderEvaluation(c,stageId){
-    const p='stage'+stageId+'_';const grade=c[p+'grade']||'';const dec=c[p+'decision']||'';
-    const notes=c[p+'notes']||'';const failR=c[p+'failReason']||'';const hd=c[p+'hesitDays']||'';
-    let html='<div class="section-title">הערכה</div><div class="card">';
-    html+='<div class="form-group"><label class="form-label">ציון 1-7 <span class="required">*</span></label><div class="scale-group">';
-    for(let i=1;i<=7;i++){const cls=grade==i?(i<3?'active fail':'active'):'';
-      html+='<div class="scale-btn '+cls+'" onclick="Stages.setGrade(\''+c.id+'\','+stageId+','+i+')">'+i+'</div>';}
+    var grade=c['stage'+stageId+'_grade']||'';
+    var html='<div class="section-title">הערכה</div><div class="card">'
+    +'<div class="form-group"><label class="form-label">ציון 1-10</label><div class="scale-group">';
+    for(var g=1;g<=10;g++){
+      var cls=grade==g?(g>=7?'active':'fail'):'';
+      html+='<div class="scale-btn '+cls+'" onclick="Stages.setGrade(\''+c.id+'\','+stageId+','+g+')">'+g+'</div>';
+    }
     html+='</div></div>';
-    html+='<div class="form-group"><label class="form-label">החלטה</label><div class="radio-group">';
-    html+='<div class="radio-btn '+(dec==='pass'?'active-success':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'pass\')">עובר</div>';
-    html+='<div class="radio-btn '+(dec==='hesitation'?'active-warning':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'hesitation\')">התלבטות</div>';
-    html+='<div class="radio-btn '+(dec==='fail'?'active-danger':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'fail\')">לא עובר</div>';
-    html+='</div></div>';
-    if(dec==='hesitation'){
-      html+='<div class="conditional show"><label class="form-label">ימים להחלטה</label><div class="radio-group">';
-      for(const d of[3,5,7,10,14])html+='<div class="radio-btn '+(hd==d?'active':'')+'" onclick="Stages.setHesitDays(\''+c.id+'\','+stageId+','+d+')">'+d+'</div>';
-      html+='</div></div>';}
-    if(dec==='fail'){
-      html+='<div class="conditional show"><label class="form-label">סיבת פסילה</label>'
-      +'<textarea class="form-textarea" rows="2" onchange="Stages.saveField(\''+c.id+'\',\''+p+'failReason\',this.value)">'+Utils.escHtml(failR)+'</textarea></div>';}
     html+='<div class="form-group"><label class="form-label">הערות</label>'
-    +'<textarea class="form-textarea" rows="3" onchange="Stages.saveField(\''+c.id+'\',\''+p+'notes\',this.value)">'+Utils.escHtml(notes)+'</textarea></div>';
-    if(dec==='pass'){const btn=stageId<7?'העבר לשלב '+(stageId+1):'סיים — התקבל!';
-      html+='<button class="btn btn-success" style="width:100%;margin-top:10px;" onclick="Stages.advanceToNextStage(\''+c.id+'\')">'+btn+'</button>';}
-    html+='</div>';return html;
+    +'<textarea class="form-textarea" rows="2" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_notes\',this.value)">'+Utils.escHtml(c['stage'+stageId+'_notes']||'')+'</textarea></div>';
+    // Decision
+    html+='<div class="form-group"><label class="form-label">החלטה</label><div class="radio-group">'
+    +'<div class="radio-btn '+(c.status==='pass'?'active-success':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'pass\')">עובר</div>'
+    +'<div class="radio-btn '+(c.status==='fail'?'active-danger':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'fail\')">לא עובר</div>'
+    +'<div class="radio-btn '+(c.status==='hesitation'?'active':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'hesitation\')">התלבטות</div>'
+    +'</div></div></div>';
+    if(c.status==='pass'&&stageId<7){
+      html+='<div style="padding:12px;"><button class="btn btn-success" style="width:100%;" onclick="Stages.advanceToNextStage(\''+c.id+'\')">העבר ל'+Utils.getStageName(stageId+1)+'</button></div>';
+    }
+    if(stageId===7&&c.status==='pass'){
+      html+='<div style="padding:12px;"><button class="btn btn-success" style="width:100%;" onclick="Stages.acceptCandidate(\''+c.id+'\')">✅ התקבל!</button></div>';
+    }
+    return html;
   },
 
-  async setGrade(id,sid,g){const c=await DB.getCandidate(id);c['stage'+sid+'_grade']=g;
-    if(g<3){c['stage'+sid+'_decision']='fail';c.status='fail';}await DB.saveCandidate(c);App.renderCandidateView(id);},
-  async setDecision(id,sid,dec){const c=await DB.getCandidate(id);const g=c['stage'+sid+'_grade']||0;
-    if(g<3&&dec!=='fail'){Utils.toast('ציון מתחת 3','danger');return;}
-    c['stage'+sid+'_decision']=dec;c.status=dec==='pass'?'pass':dec==='fail'?'fail':'hesitation';
-    c['stage'+sid+'_decidedAt']=new Date().toISOString();await DB.saveCandidate(c);App.renderCandidateView(id);},
-  async setHesitDays(id,sid,d){const c=await DB.getCandidate(id);c['stage'+sid+'_hesitDays']=d;
-    c['stage'+sid+'_hesitDeadline']=new Date(Date.now()+d*864e5).toISOString();await DB.saveCandidate(c);App.renderCandidateView(id);},
-  async saveField(id,field,val){const c=await DB.getCandidate(id);c[field]=val;await DB.saveCandidate(c);},
-  async toggleCheck(id,field,el){const c=await DB.getCandidate(id);c[field]=!c[field];await DB.saveCandidate(c);el.querySelector('.cb-box').classList.toggle('checked');},
+  async setGrade(id,stageId,grade){
+    var c=await DB.getCandidate(id);c['stage'+stageId+'_grade']=grade;
+    await DB.saveCandidate(c);App.renderCandidateView(id);
+  },
+  async setDecision(id,stageId,decision){
+    var c=await DB.getCandidate(id);c.status=decision;
+    c['stage'+stageId+'_decision']=decision;c['stage'+stageId+'_completedAt']=new Date().toISOString();
+    await DB.saveCandidate(c);DB.logAction('החלטה',c.name+' - '+decision);
+    App.renderCandidateView(id);
+  },
+  async advanceToNextStage(id){
+    var c=await DB.getCandidate(id);var next=c.stage+1;
+    c['stage'+c.stage+'_completedAt']=new Date().toISOString();
+    c.stage=next;c.status='active';c.stageEnteredAt=new Date().toISOString();
+    await DB.saveCandidate(c);DB.logAction('קידום',c.name+' → '+Utils.getStageName(next));
+    Utils.toast(c.name+' עבר ל'+Utils.getStageName(next),'success');App.navigate('stage',next);
+  },
+  async acceptCandidate(id){
+    var c=await DB.getCandidate(id);c.status='accepted';c.acceptedAt=new Date().toISOString();
+    await DB.saveCandidate(c);DB.logAction('התקבלות',c.name);
+    Utils.toast(c.name+' התקבל! 🎉','success');App.navigate('stage',7);
+  },
 
-  // --- Generic detail (stages 4-7) ---
-  renderGenericDetail(c,sid){
-    const stage=Utils.getStage(sid);const p='stage'+sid+'_';
-    let html=this.renderHistorySummary(c,sid);
-    html+='<div class="section-title">תיאום</div><div class="card">';
+  // Generic detail for stages 4-7
+  renderGenericDetail(c){
+    var stageId=c.stage;var html='';
+    html+=this.renderHistorySummary(c,stageId);
+    var stageName=Utils.getStageName(stageId);
+    html+='<div class="section-title">'+stageName+'</div><div class="card">';
     html+='<div class="form-group"><label class="form-label">תאריך</label>'
-    +'<input type="date" class="form-input" value="'+(c[p+'date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\''+p+'date\',this.value)"></div>';
+    +'<input type="date" class="form-input" value="'+(c['stage'+stageId+'_date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_date\',this.value)"></div>';
     html+='<div class="form-group"><label class="form-label">שעה</label>'
-    +'<input type="time" class="form-input" value="'+(c[p+'time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\''+p+'time\',this.value)"></div>';
-    html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\''+p+'outlookEntered\',this)">'
-    +'<div class="cb-box '+(c[p+'outlookEntered']?'checked':'')+'">✓</div><span class="cb-label">הוזן זימון ב-Outlook</span></div>';
-    html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\''+p+'inviteSent\',this)">'
-    +'<div class="cb-box '+(c[p+'inviteSent']?'checked':'')+'">✓</div><span class="cb-label">נשלח זימון למועמד</span></div></div>';
-    html+='<div style="padding:0 12px;margin:8px 0;">'
-    +'<button class="btn btn-email btn-sm" onclick="Stages.sendUpdateEmail(\''+c.id+'\','+sid+')">✉️ שלח מייל עדכון</button></div>';
-    html+=this.renderEvaluation(c,sid);return html;
+    +'<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value)"></div>';
+    // Stage 6: manager name + WhatsApp to manager
+    if(stageId===6){
+      html+='<div class="form-group"><label class="form-label">שם מנהל מצטרף</label>'
+      +'<input class="form-input" value="'+Utils.escHtml(c.stage6_managerName||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerName\',this.value)" placeholder="שם מנהל"></div>';
+      html+='<div class="form-group"><label class="form-label">טלפון מנהל</label>'
+      +'<input class="form-input" type="tel" dir="ltr" value="'+Utils.escHtml(c.stage6_managerPhone||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerPhone\',this.value)" placeholder="050-..."></div>';
+      if(c.stage6_managerPhone&&c.stage6_date){
+        html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendManagerReminder(\''+c.id+'\')">📱 שלח תזכורת למנהל</button>';
+      }
+    }
+    html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage'+stageId+'_done\',this)">'
+    +'<div class="cb-box '+(c['stage'+stageId+'_done']?'checked':'')+'">✓</div>'
+    +'<span>בוצע</span></div>';
+    // Invite WhatsApp
+    html+='<div style="margin-top:8px;"><button class="btn btn-wa btn-sm" onclick="Stages.sendInvite(\''+c.id+'\','+stageId+')">📱 שלח זימון</button></div>';
+    html+='</div>';
+    // Reminder button
+    if(c['stage'+stageId+'_date']){
+      html+='<div style="padding:6px 14px;"><button class="btn btn-outline btn-sm" onclick="Utils.scheduleReminder(\''+Utils.escHtml(c.name)+' - '+Utils.escHtml(stageName)+'\',\''+c['stage'+stageId+'_date']+'\',\''+(c['stage'+stageId+'_time']||'09:00')+'\')">🔔 הוסף תזכורת</button></div>';
+    }
+    html+=this.renderEvaluation(c,stageId);
+    return html;
   },
 
-  renderHistorySummary(c,upTo){
-    let items=[];if(c.createdAt)items.push('שלב 1: '+Utils.formatDate(c.createdAt));
-    for(let s=2;s<upTo;s++){const g=c['stage'+s+'_grade'];const d=c['stage'+s+'_decision'];
-      if(g||d)items.push('שלב '+s+': '+(g?'ציון '+g:'')+(d?' — '+(Utils.STATUSES[d]||d):''));}
-    if(!items.length)return'';
-    return '<div class="history-compact"><strong>היסטוריה:</strong> '+items.join(' | ')+'</div>';
+  async sendInvite(id,stageId){
+    var c=await DB.getCandidate(id);if(!c)return;
+    var msg=(App.settings.msgStageInvite||'').replace('{name}',c.name)
+      .replace('{stageName}',Utils.getStageName(stageId))
+      .replace('{date}',c['stage'+stageId+'_date']||'').replace('{time}',c['stage'+stageId+'_time']||'');
+    Utils.openWhatsApp(c.phone,msg);
   },
 
-  // --- WhatsApp ---
-  async sendWhatsApp(sid,cid){const c=await DB.getCandidate(cid);if(!c)return;
-    let key='msgStage1';if(sid===2)key='msgStage2';else if(sid===3)key='msgStage3Coord';else if(sid>=4)key='msgStageInvite';
-    let msg=App.settings[key]||'';msg=msg.replace('{name}',c.name||'').replace('{date}',c['stage'+sid+'_date']||'')
-    .replace('{time}',c['stage'+sid+'_time']||'').replace('{stageName}',Utils.getStage(sid)?.name||'');
-    Utils.openWhatsApp(c.phone,msg);},
+  async sendManagerReminder(id){
+    var c=await DB.getCandidate(id);if(!c||!c.stage6_managerPhone)return;
+    var msg='שלום, תזכורת לראיון מתקדם עם '+c.name
+    +' בתאריך '+(c.stage6_date||'')+' בשעה '+(c.stage6_time||'');
+    Utils.openWhatsApp(c.stage6_managerPhone,msg);
+  },
 
-  // --- Emails ---
-  async sendUpdateEmail(id,sid){
-    const c=await DB.getCandidate(id);const to=App.settings.email||'';
-    if(!to){Utils.toast('לא הוגדר מייל בדף ניהול','danger');return;}
-    const stage=Utils.getStage(sid);
-    const subj='עדכון - '+c.name+' - '+stage.name;
-    const body='שם: '+c.name+'\nשלב: '+stage.name+'\nציון: '+(c['stage'+sid+'_grade']||'')+'\nתוצאה: '+(Utils.STATUSES[c.status]||'');
-    Utils.sendEmail(to,subj,body);},
-
-  // --- Modal ---
-  showModal(html){const o=document.createElement('div');o.className='modal-overlay';o.id='modalOverlay';
-    o.innerHTML='<div class="modal">'+html+'</div>';o.addEventListener('click',e=>{if(e.target===o)Stages.closeModal();});
-    document.body.appendChild(o);},
-  closeModal(){const m=Utils.id('modalOverlay');if(m)m.remove();}
-};
-
-// Quick advance for stage 1
-Stages.quickAdvance=async function(id,from){
-  const c=await DB.getCandidate(id);c.status='pass';c['stage'+from+'_decision']='pass';
-  c['stage'+from+'_completedAt']=new Date().toISOString();await DB.saveCandidate(c);await Stages.advanceToNextStage(id);
+  showModal(html){
+    var existing=document.querySelector('.modal-overlay');if(existing)existing.remove();
+    var overlay=document.createElement('div');overlay.className='modal-overlay';
+    overlay.innerHTML='<div class="modal">'+html+'</div>';
+    overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove()});
+    document.body.appendChild(overlay);
+  },
+  closeModal(){var m=document.querySelector('.modal-overlay');if(m)m.remove();}
 };

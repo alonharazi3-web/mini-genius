@@ -1,49 +1,121 @@
 'use strict';
 const Admin={
   async render(){
-    const page=Utils.id('mainContent');const settings=await DB.getAllSettings();
-    const recs=JSON.parse(settings.recruiters||'[]');const lead=settings.leadRecruiter||'';
-    let html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:12px;">'
+    var page=Utils.id('mainContent');var settings=await DB.getAllSettings();
+    var recs=JSON.parse(settings.recruiters||'[]');var lead=settings.leadRecruiter||'';
+    var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+App.currentStage+')">←</button>'
-    +'<div style="font-size:1.1rem;font-weight:700;">⚙️ דף ניהול</div></div>';
+    +'<div style="font-size:1.15rem;font-weight:700;">⚙️ דף ניהול</div></div>';
+
+    // Job cycles management
+    html+='<div class="admin-section"><h3>💼 מחזורי גיוס</h3>';
+    var jobs=await DB.getAllJobs();
+    jobs.forEach(function(j){
+      var isActive=j.id===App.currentJob;
+      html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
+      +'<span style="flex:1;font-weight:'+(isActive?'700':'400')+';">'+(isActive?'⭐ ':'')+Utils.escHtml(j.name)+'</span>';
+      if(!isActive)html+='<button class="btn btn-primary btn-sm" onclick="Admin.switchJob(\''+j.id+'\')">הפעל</button>';
+      html+='</div>';
+    });
+    html+='<div style="display:flex;gap:6px;margin-top:10px;">'
+    +'<input class="form-input" id="newJobName" placeholder="שם מחזור חדש" style="flex:1;">'
+    +'<button class="btn btn-primary btn-sm" onclick="Admin.addJob()">הוסף</button></div></div>';
+
     // Recruiters
     html+='<div class="admin-section"><h3>👥 רכזי גיוס</h3><div id="recruiterList">';
-    recs.forEach((r,i)=>{html+='<span class="recruiter-chip '+(r===lead?'lead':'')+'">'+r+(r===lead?' ⭐':'')+' <span class="remove" onclick="Admin.removeRecruiter('+i+')">×</span></span>';});
+    recs.forEach(function(r,i){html+='<span class="recruiter-chip '+(r===lead?'lead':'')+'">'+r+(r===lead?' ⭐':'')+' <span class="remove" onclick="Admin.removeRecruiter('+i+')">×</span></span>';});
     html+='</div><div style="display:flex;gap:6px;margin-top:10px;">'
     +'<input class="form-input" id="newRecruiter" placeholder="שם רכז חדש" style="flex:1;">'
     +'<button class="btn btn-primary btn-sm" onclick="Admin.addRecruiter()">הוסף</button></div>';
     if(recs.length){html+='<div class="form-group" style="margin-top:10px;"><label class="form-label">רכז מוביל</label>'
     +'<select class="form-select" id="leadSelect" onchange="Admin.setLead(this.value)">'
-    +recs.map(r=>'<option value="'+r+'"'+(r===lead?' selected':'')+'>'+r+'</option>').join('')+'</select></div>';}
+    +recs.map(function(r){return '<option value="'+r+'"'+(r===lead?' selected':'')+'>'+r+'</option>'}).join('')+'</select></div>';}
     html+='</div>';
+
     // Email & Phone
     html+='<div class="admin-section"><h3>📧 כתובות ומספרים</h3>'
     +'<div class="form-group"><label class="form-label">מייל לעדכונים</label>'
     +'<input class="form-input" id="sEmail" value="'+(settings.email||'')+'" type="email" dir="ltr" onchange="Admin.saveSetting(\'email\',this.value)"></div>'
     +'<div class="form-group"><label class="form-label">מספר מוקד מבחנים</label>'
     +'<input class="form-input" id="sExamPhone" value="'+(settings.examCenterPhone||'')+'" type="tel" dir="ltr" onchange="Admin.saveSetting(\'examCenterPhone\',this.value)"></div></div>';
-    // Messages
-    const msgs=[['msgStage1','שלב 1 — הודעת הזנה'],['msgStage2','שלב 2 — ניסו ליצור קשר'],['msgStage3Coord','שלב 3 — תיאום מבחן'],['msgStage3Results','שלב 3 — תוצאות'],['msgStageInvite','שלבים 4-7 — זימון'],['msgUnfreeze','ביטול הקפאה — חידוש קשר']];
+
+    // WhatsApp messages
+    var msgs=[['msgStage1','📌 לידים — הודעת הזנה'],
+    ['msgStage2','📞 ראיון טלפוני — ניסו קשר'],
+    ['msgStage3Coord','📝 מטלה — תיאום מבחן'],
+    ['msgStage3Results','📝 מטלה — תוצאות'],
+    ['msgStageInvite','🤝 שלבים 4-7 — זימון'],
+    ['msgUnfreeze','❄️ ביטול הקפאה — חידוש קשר']];
     html+='<div class="admin-section"><h3>📱 הודעות WhatsApp</h3>'
     +'<div class="info-box">משתנים: {name}, {date}, {time}, {stageName}</div>';
-    msgs.forEach(([k,l])=>{html+='<div class="form-group"><label class="form-label">'+l+'</label>'
-    +'<textarea class="form-textarea" rows="2" onchange="Admin.saveSetting(\''+k+'\',this.value)">'+(settings[k]||'')+'</textarea></div>';});
+    msgs.forEach(function(m){html+='<div class="form-group"><label class="form-label">'+m[1]+'</label>'
+    +'<textarea class="form-textarea" rows="2" onchange="Admin.saveSetting(\''+m[0]+'\',this.value)">'+(settings[m[0]]||'')+'</textarea></div>';});
     html+='</div>';
-    // Alerts
-    const alerts=[['alertDaysStage1','שלב 1'],['alertDaysStage2','שלב 2'],['alertDaysStage3Exam','שלב 3 (מבחן)'],['alertDaysStage3Transfer','שלב 3 (העברה)'],['alertDaysStage4','שלב 4'],['alertDaysStage5','שלב 5'],['alertDaysStage6','שלב 6'],['alertDaysStage7','שלב 7']];
-    html+='<div class="admin-section"><h3>⏰ ספי התראות (ימי עבודה)</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
-    alerts.forEach(([k,l])=>{html+='<div class="form-group"><label class="form-label">'+l+'</label>'
-    +'<input class="form-input" type="number" min="1" max="30" value="'+(settings[k]||5)+'" onchange="Admin.saveSetting(\''+k+'\',this.value)"></div>';});
-    html+='</div></div></div>';page.innerHTML=html;
+
+    // Alert days
+    html+='<div class="admin-section"><h3>⏰ ימי התראה לעיכוב</h3>';
+    for(var i=1;i<=7;i++){
+      var st=Utils.getStage(i);var key='alertDaysStage'+i;
+      html+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+      +'<span style="flex:1;font-size:.88rem;">'+st.icon+' '+st.name+'</span>'
+      +'<input class="form-input" type="number" min="1" max="30" value="'+(settings[key]||5)+'" '
+      +'style="width:60px;text-align:center;" onchange="Admin.saveSetting(\''+key+'\',this.value)"> ימים</div>';
+    }
+    html+='</div>';
+
+    // Data management
+    html+='<div class="admin-section"><h3>💾 ניהול נתונים</h3>'
+    +'<button class="btn btn-primary" style="width:100%;margin-bottom:8px;" onclick="Admin.exportData()">📤 ייצוא כל הנתונים</button>'
+    +'<button class="btn btn-outline" style="width:100%;" onclick="Admin.importData()">📥 ייבוא נתונים</button>'
+    +'<input type="file" id="importFile" accept=".json" style="display:none" onchange="Admin.processImport(this)">'
+    +'</div></div>';
+
+    page.innerHTML=html;
   },
-  async addRecruiter(){const n=Utils.id('newRecruiter')?.value?.trim();if(!n)return;
-    const recs=JSON.parse(App.settings.recruiters||'[]');if(recs.includes(n)){Utils.toast('רכז כבר קיים','danger');return;}
-    if(recs.length>=4){Utils.toast('מקסימום 4','danger');return;}recs.push(n);
-    await DB.setSetting('recruiters',JSON.stringify(recs));if(!App.settings.leadRecruiter)await DB.setSetting('leadRecruiter',n);
-    await App.refreshSettings();this.render();},
-  async removeRecruiter(i){const recs=JSON.parse(App.settings.recruiters||'[]');const rm=recs.splice(i,1)[0];
-    await DB.setSetting('recruiters',JSON.stringify(recs));if(App.settings.leadRecruiter===rm&&recs.length)await DB.setSetting('leadRecruiter',recs[0]);
-    await App.refreshSettings();this.render();},
-  async setLead(n){await DB.setSetting('leadRecruiter',n);await App.refreshSettings();this.render();},
-  async saveSetting(k,v){await DB.setSetting(k,v);await App.refreshSettings();Utils.toast('נשמר','success');}
+
+  async saveSetting(key,val){await DB.setSetting(key,val);App.settings[key]=val;},
+  async addRecruiter(){
+    var name=Utils.id('newRecruiter')?.value?.trim();if(!name)return;
+    var recs=JSON.parse(App.settings.recruiters||'[]');
+    if(recs.indexOf(name)>=0){Utils.toast('רכז כבר קיים','warning');return;}
+    recs.push(name);await this.saveSetting('recruiters',JSON.stringify(recs));
+    Utils.toast('רכז נוסף','success');this.render();
+  },
+  async removeRecruiter(idx){
+    var recs=JSON.parse(App.settings.recruiters||'[]');recs.splice(idx,1);
+    await this.saveSetting('recruiters',JSON.stringify(recs));this.render();
+  },
+  async setLead(name){await this.saveSetting('leadRecruiter',name);Utils.toast('רכז מוביל עודכן','success');},
+  async addJob(){
+    var name=Utils.id('newJobName')?.value?.trim();if(!name)return;
+    await DB.saveJob({name:name,active:true});Utils.toast('מחזור נוסף','success');this.render();
+  },
+  async switchJob(jobId){
+    App.currentJob=jobId;await this.saveSetting('activeJobId',jobId);
+    App.renderJobLabel();Utils.toast('מחזור הוחלף','success');this.render();
+  },
+  async exportData(){
+    var data={candidates:await DB.getAllCandidates(),settings:await DB.getAllSettings(),
+      jobs:await DB.getAllJobs(),tasks:await DB.getAllTasks(),exportDate:new Date().toISOString()};
+    var json=JSON.stringify(data,null,2);
+    var filename='minigenius_backup_'+Utils.today()+'.json';
+    Utils.writeToCacheAndShare(filename,json,'application/json','Mini Genius גיבוי');
+  },
+  importData(){Utils.id('importFile')?.click()},
+  async processImport(input){
+    if(!input.files||!input.files[0])return;
+    var reader=new FileReader();
+    reader.onload=async function(e){
+      try{
+        var data=JSON.parse(e.target.result);
+        if(data.candidates){for(var i=0;i<data.candidates.length;i++){await DB.put('candidates',data.candidates[i]);}}
+        if(data.jobs){for(var i=0;i<data.jobs.length;i++){await DB.put('jobs',data.jobs[i]);}}
+        if(data.tasks){for(var i=0;i<data.tasks.length;i++){await DB.put('tasks',data.tasks[i]);}}
+        if(data.settings){var s=data.settings;for(var k in s){if(s[k]&&s[k].key)await DB.put('settings',s[k]);}}
+        App.settings=await DB.getAllSettings();
+        Utils.toast('ייבוא הושלם!','success');Admin.render();
+      }catch(err){Utils.toast('שגיאה בייבוא','danger');_dbg('Import err:'+err);}
+    };
+    reader.readAsText(input.files[0]);
+  }
 };

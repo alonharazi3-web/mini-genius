@@ -1,182 +1,186 @@
 'use strict';
 const App={
-  currentJob:null,currentStage:1,settings:{},
+  currentJob:null,currentStage:1,settings:{},_dirty:{},
 
   async init(){
-    setTimeout(()=>{const sp=Utils.id('splashScreen');if(sp)sp.classList.add('hide');
-      setTimeout(()=>{if(sp)sp.remove();},600);},2500);
+    setTimeout(function(){var sp=Utils.id('splashScreen');if(sp)sp.classList.add('hide');
+      setTimeout(function(){if(sp)sp.remove();},600);},2500);
+    _dbg('App.init start');
     await DB.init();await DB.initDefaults();
     this.settings=await DB.getAllSettings();
+    _dbg('DB ready, settings loaded');
     this.checkFrozenCandidates();
-    this.setupRouting();this.renderJobSelector();this.renderTabs();this.setupFAB();
-    const recruiters=JSON.parse(this.settings.recruiters||'[]');
+    this.setupRouting();this.renderJobLabel();this.renderTabs();this.setupFAB();
+    var recruiters=JSON.parse(this.settings.recruiters||'[]');
     if(!recruiters.length){this.navigate('admin');Utils.toast('הגדר רכזים תחילה','warning');}
-    else{const jobs=await DB.getAllJobs();if(jobs.length){this.currentJob=jobs[0].id;this.navigate('stage',1);}}
-    this.autoSaveIndicator();Tasks.carryOverTasks();
+    else{
+      var jobs=await DB.getAllJobs();
+      var activeId=this.settings.activeJobId;
+      if(activeId){this.currentJob=activeId;}
+      else if(jobs.length){this.currentJob=jobs[0].id;}
+      this.navigate('stage',1);
+    }
+    Tasks.carryOverTasks();
+    // Auto-save every 30 seconds
+    setInterval(function(){App.flushDirty()},30000);
+    _dbg('App.init done');
+  },
+
+  // Mark field as dirty for auto-save
+  markDirty(cid,field,val){
+    if(!this._dirty[cid])this._dirty[cid]={};
+    this._dirty[cid][field]=val;
+  },
+  async flushDirty(){
+    for(var cid in this._dirty){
+      var c=await DB.getCandidate(cid);if(!c)continue;
+      for(var f in this._dirty[cid]){c[f]=this._dirty[cid][f];}
+      await DB.saveCandidate(c);
+    }
+    this._dirty={};
   },
 
   async checkFrozenCandidates(){
-    const all=await DB.getAllCandidates();const today=Utils.today();
-    for(const c of all){
+    var all=await DB.getAllCandidates();var today=Utils.today();
+    for(var i=0;i<all.length;i++){var c=all[i];
       if(c.status==='frozen'&&c.freezeEndDate&&c.freezeEndDate<=today){
         Utils.toast('⚡ '+c.name+' - סיום הקפאה!','warning');
       }
     }
   },
 
-  setupRouting(){window.addEventListener('hashchange',()=>this.handleRoute())},
+  renderJobLabel(){
+    var el=Utils.id('jobLabel');if(!el)return;
+    DB.getAllJobs().then(function(jobs){
+      var active=jobs.find(function(j){return j.id===App.currentJob});
+      el.textContent=active?active.name:'לא נבחר מחזור';
+    });
+  },
+
+  setupRouting(){window.addEventListener('hashchange',function(){App.flushDirty();App.handleRoute()})},
   navigate(page,param){
+    this.flushDirty();
     if(page==='stage')location.hash='#stage/'+param;
     else if(page==='candidate')location.hash='#candidate/'+param;
+    else if(page==='dashboard')location.hash='#dashboard';
+    else if(page==='tasks')location.hash='#tasks';
+    else if(page==='daysummary')location.hash='#daysummary';
+    else if(page==='admin')location.hash='#admin';
     else location.hash='#'+page;
   },
 
   handleRoute(){
-    const hash=location.hash.slice(1)||'stage/1';const[page,param]=hash.split('/');
-    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-    if(page==='stage'){this.currentStage=parseInt(param)||1;this.renderStage(this.currentStage);this.updateTabHighlight();}
-    else if(page==='candidate')this.renderCandidateView(param);
-    else if(page==='admin')Admin.render();
-    else if(page==='dashboard')Dashboard.render(this.currentStage);
-    else if(page==='tasks')Tasks.render(this.currentStage);
-    else if(page==='daysummary')DaySummary.render();
-    else if(page==='newCandidate')Stage1.renderForm();
-  },
-
-  async renderJobSelector(){
-    const jobs=await DB.getAllJobs();const c=Utils.id('jobSelector');
-    c.innerHTML=jobs.map(j=>'<div class="job-chip '+(j.id===this.currentJob?'active':'')+'" data-job="'+j.id+'">'+j.name+'</div>').join('');
-    c.querySelectorAll('.job-chip').forEach(el=>{el.addEventListener('click',()=>{
-      this.currentJob=el.dataset.job;this.renderJobSelector();this.renderStage(this.currentStage);});});
+    var hash=location.hash.replace('#','');var parts=hash.split('/');
+    _dbg('Route: '+hash);
+    if(parts[0]==='stage'){var s=parseInt(parts[1])||1;this.currentStage=s;this.renderStageList(s);}
+    else if(parts[0]==='candidate'){this.renderCandidateView(parts[1]);}
+    else if(parts[0]==='dashboard'){Dashboard.render(this.currentStage);}
+    else if(parts[0]==='tasks'){Tasks.render(this.currentStage);}
+    else if(parts[0]==='daysummary'){DaySummary.render();}
+    else if(parts[0]==='admin'){Admin.render();}
+    else{this.renderStageList(this.currentStage);}
+    this.updateTabHighlight();
   },
 
   renderTabs(){
-    const c=Utils.id('tabBar');
-    c.innerHTML=Utils.STAGES.map(s=>'<div class="tab '+(s.id===this.currentStage?'active':'')+'" data-stage="'+s.id+'"><span class="icon">'+s.icon+'</span><span class="count" id="tabCount'+s.id+'"></span>'+s.name+'</div>').join('')
-    +'<div class="tab" data-page="admin"><span class="icon">⚙️</span>ניהול</div>';
-    c.querySelectorAll('.tab').forEach(el=>{el.addEventListener('click',()=>{
-      if(el.dataset.stage)this.navigate('stage',el.dataset.stage);
-      else if(el.dataset.page)this.navigate(el.dataset.page);});});
-    this.updateTabCounts();
-  },
-
-  async updateTabCounts(){
-    for(const s of Utils.STAGES){
-      const cands=await DB.getByStage(s.id,this.currentJob);
-      const active=cands.filter(c=>c.status==='active'||c.status==='hesitation');
-      const el=Utils.id('tabCount'+s.id);
-      if(el)el.innerHTML=active.length?'<span class="badge">'+active.length+'</span>':'';
-    }
-  },
-  updateTabHighlight(){document.querySelectorAll('.tab').forEach(t=>{t.classList.toggle('active',t.dataset.stage==this.currentStage)})},
-
-  async renderStage(stageId){
-    const stage=Utils.getStage(stageId);const page=Utils.id('mainContent');
-    const candidates=await DB.getByStage(stageId,this.currentJob);
-    const active=candidates.filter(c=>c.status!=='stopped');
-    const frozen=await DB.getFrozen(this.currentJob);
-    const stageFrozen=frozen.filter(f=>f.frozenFromStage===stageId);
-
-    let html='<div class="page active" id="stagePage">';
-    html+='<div style="display:flex;gap:8px;margin:10px 12px;align-items:center;">';
-    html+='<div class="search-bar" style="flex:1;margin:0;"><input type="text" id="searchInput" placeholder="חיפוש..." oninput="App.filterCandidates()"><span class="search-icon">🔍</span></div>';
-    if(stageId===1)html+='<button class="btn btn-primary btn-sm" onclick="Stage1.renderForm()">+ חדש</button>';
-    html+='<button class="btn btn-outline btn-sm" onclick="App.navigate(\'dashboard\')">📊</button>';
-    html+='<button class="btn btn-outline btn-sm" onclick="App.navigate(\'tasks\')">☑️</button></div>';
-
-    if(stageFrozen.length){
-      html+='<div class="purple-box" style="margin:0 12px;cursor:pointer;" onclick="App.showFrozenList('+stageId+')">❄️ '+stageFrozen.length+' מועמדים בהקפאה</div>';
-    }
-
-    html+='<div id="candidateList">';
-    if(!active.length&&!stageFrozen.length){
-      html+='<div class="empty-state"><div class="icon">💭</div><div>אין מועמדים בשלב זה</div></div>';
-    }else{
-      active.sort((a,b)=>{const po={high:0,medium:1,low:2};return(po[a.priority]||1)-(po[b.priority]||1)});
-      html+=active.map(c=>this.renderCandidateCard(c,stageId)).join('');
-    }
-    html+='</div></div>';
-    page.innerHTML=html;this.updateTabCounts();
-  },
-
-  renderCandidateCard(c,stageId){
-    const pc=c.priority?'priority-'+c.priority:'';
-    const sb=c.status?'<span class="status-badge status-'+c.status+'">'+(Utils.STATUSES[c.status]||c.status)+'</span>':'';
-    const days=Utils.workDaysSince(c.updatedAt);
-    const ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
-    const stale=days>=ad&&c.status==='active';
-    let grade='';
-    if(c['stage'+stageId+'_grade']){const g=c['stage'+stageId+'_grade'];
-      grade='<div class="grade-circle '+(g>=5?'grade-high':g>=3?'grade-mid':'grade-low')+'">'+g+'</div>';}
-    return '<div class="card '+pc+(stale?' stale':'')+'" data-id="'+c.id+'" data-name="'+Utils.escHtml(c.name)+'" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-    +'<div class="card-header"><div><div class="card-name">'+Utils.escHtml(c.name)+(stale?' ⚠️':'')+'</div>'
-    +'<div class="card-meta">'+(c.phone||'')+' · '+Utils.formatDate(c.createdAt)+' '+sb+'</div></div>'+grade+'</div>'
-    +(c.recruiter?'<div class="card-meta">רכז: '+Utils.escHtml(c.recruiter)+'</div>':'')
-    +(c.notes?'<div class="card-meta" style="margin-top:4px;">'+Utils.escHtml(c.notes).substring(0,60)+'</div>':'')
-    +'</div>';
-  },
-
-  filterCandidates(){
-    const q=(Utils.id('searchInput')?.value||'').toLowerCase();
-    document.querySelectorAll('#candidateList .card').forEach(card=>{
-      card.style.display=!q||(card.dataset.name||'').toLowerCase().includes(q)?'':'none';});
-  },
-
-  async showFrozenList(stageId){
-    const frozen=await DB.getFrozen(this.currentJob);
-    const list=frozen.filter(f=>f.frozenFromStage===stageId);
-    let html='<div class="modal-title">❄️ מועמדים בהקפאה</div>';
-    list.forEach(c=>{
-      const endDate=c.freezeEndDate?Utils.formatDate(c.freezeEndDate):'';
-      const isReady=c.freezeEndDate&&c.freezeEndDate<=Utils.today();
-      html+='<div class="card'+(isReady?' priority-high':' frozen')+'" onclick="Stages.closeModal();App.navigate(\'candidate\',\''+c.id+'\')">'
-        +'<div class="card-name">'+Utils.escHtml(c.name)+'</div>'
-        +'<div class="card-meta">סיבה: '+Utils.escHtml(c.freezeReason||'')+' | סיום: '+endDate+'</div>'
-        +(isReady?'<div class="warn-box">⚡ מוכן להחזיר!</div>':'')+'</div>';
+    var bar=Utils.id('tabBar');if(!bar)return;
+    var html='';
+    Utils.STAGES.forEach(function(s){
+      html+='<div class="tab" data-stage="'+s.id+'" onclick="App.navigate(\'stage\','+s.id+')">'
+      +'<span class="icon">'+s.icon+'</span>'
+      +'<span id="tabBadge'+s.id+'"></span>'
+      +s.name+'</div>';
     });
-    html+='<button class="btn btn-outline" style="width:100%;margin-top:10px;" onclick="Stages.closeModal()">סגור</button>';
-    Stages.showModal(html);
+    bar.innerHTML=html;this.updateBadges();
+  },
+
+  async updateBadges(){
+    for(var i=1;i<=7;i++){
+      var cands=await DB.getByStage(i,this.currentJob);
+      var active=cands.filter(function(c){return c.status==='active'}).length;
+      var el=Utils.id('tabBadge'+i);
+      if(el)el.innerHTML=active?'<span class="badge">'+active+'</span>':'';
+    }
+  },
+
+  updateTabHighlight(){
+    var tabs=document.querySelectorAll('.tab');
+    tabs.forEach(function(t){t.classList.remove('active');
+      if(parseInt(t.dataset.stage)===App.currentStage)t.classList.add('active');
+    });
+  },
+
+  async renderStageList(stageId){
+    var stage=Utils.getStage(stageId);if(!stage)return;
+    var cands=await DB.getByStage(stageId,this.currentJob);
+    var active=cands.filter(function(c){return c.status!=='stopped'&&c.status!=='frozen'});
+    active.sort(function(a,b){var pa={high:0,medium:1,low:2};return(pa[a.priority]||1)-(pa[b.priority]||1);});
+    var page=Utils.id('mainContent');
+    var html='<div class="page active">';
+    // Search
+    html+='<div style="padding:10px 14px;"><div class="search-bar">'
+    +'<input class="form-input" id="stageSearch" placeholder="חפש..." oninput="App.filterList(this.value)" style="padding-right:14px;">'
+    +'</div></div>';
+    if(!active.length){
+      html+='<div class="empty-state"><div class="icon">💭</div>'
+      +'<div>אין מועמדים בשלב זה</div></div>';
+    }else{
+      html+='<div id="candidateList">';
+      active.forEach(function(c){
+        var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
+        var days=Utils.workDaysSince(c.updatedAt);var delayed=days>=ad;
+        html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+        +'<div class="card-header"><span class="card-name">'+Utils.escHtml(c.name)+'</span>'
+        +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
+        +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
+        +(delayed?' | <span style="color:var(--danger);">בעיכוב!</span>':'')
+        +'</div></div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';page.innerHTML=html;this.updateBadges();
+  },
+
+  filterList(q){
+    q=q.toLowerCase();
+    document.querySelectorAll('#candidateList .card').forEach(function(el){
+      el.style.display=el.dataset.name.toLowerCase().includes(q)?'':'none';
+    });
   },
 
   async renderCandidateView(id){
-    const c=await DB.getCandidate(id);if(!c){this.navigate('stage',1);return;}
-    const page=Utils.id('mainContent');const stageId=c.stage;const stage=Utils.getStage(stageId);
-
-    let html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:12px;">'
-    +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+stageId+')">←</button>'
-    +'<div style="flex:1;"><div style="font-size:1.1rem;font-weight:700;">'+Utils.escHtml(c.name)+'</div>'
-    +'<div style="font-size:.75rem;color:var(--text-light);">'+stage.icon+' '+stage.name+'</div></div></div>';
-
-    html+='<div style="display:flex;gap:6px;padding:0 12px;flex-wrap:wrap;">';
-    html+='<button class="btn btn-call btn-sm" onclick="Utils.openDialer(\''+c.phone+'\')">📞 חייג</button>';
-    html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendWhatsApp('+stageId+',\''+c.id+'\')">📱 WA</button>';
-    if(stageId>=4)html+='<button class="btn btn-email btn-sm" onclick="Stages.sendUpdateEmail(\''+c.id+'\','+stageId+')">✉️ זימון</button>';
-    if(c.status==='frozen'){
-      html+='<button class="btn btn-purple btn-sm" onclick="Stages.unfreezeCandidate(\''+c.id+'\')">❄️ החזר</button>';
-    }else{
-      if(stageId<=2)html+='<button class="btn btn-purple btn-sm" onclick="Stages.freezeCandidate(\''+c.id+'\')">❄️ הקפאה</button>';
-      html+='<button class="btn btn-danger btn-sm" onclick="Stages.stopProcess(\''+c.id+'\')">⛔ הפסקה</button>';
-    }
+    this.flushDirty();
+    var c=await DB.getCandidate(id);if(!c){Utils.toast('לא נמצא','danger');return;}
+    var page=Utils.id('mainContent');
+    var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
+    +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+c.stage+')">←</button>'
+    +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+Utils.escHtml(c.name)+'</div>'
+    +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div></div>'
+    +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>';
+    // Action buttons
+    html+='<div style="display:flex;gap:6px;padding:0 14px;flex-wrap:wrap;">'
+    +'<button class="btn btn-call btn-sm" onclick="Utils.openDialer(\''+c.phone+'\')">📞 התקשר</button>'
+    +'<button class="btn btn-wa btn-sm" onclick="Stages.sendWhatsApp('+c.stage+',\''+c.id+'\')">📱 וואצאפ</button>';
+    if(c.stage<=2)html+='<button class="btn btn-purple btn-sm" onclick="Stages.freezeCandidate(\''+c.id+'\')">❄️ הקפאה</button>';
+    html+='<button class="btn btn-danger btn-sm" onclick="Stages.stopProcess(\''+c.id+'\')">⛔ הפסק</button>';
     html+='</div>';
-
-    if(c.status==='frozen'){
-      html+='<div class="purple-box" style="margin:8px 12px;">❄️ בהקפאה עד '+Utils.formatDate(c.freezeEndDate)
-        +'<br>סיבה: '+Utils.escHtml(c.freezeReason||'')+'</div>';
-    }
-
-    if(stageId===1)html+=Stage1.renderDetail(c);
-    else if(stageId===2)html+=Stage2.renderDetail(c);
-    else if(stageId===3)html+=Stage3.renderDetail(c);
-    else html+=Stages.renderGenericDetail(c,stageId);
-
+    // Stage-specific content
+    if(c.stage===1)html+=Stage1.renderDetail(c);
+    else if(c.stage===2)html+=Stage2.renderDetail(c);
+    else if(c.stage===3)html+=Stage3.renderDetail(c);
+    else html+=Stages.renderGenericDetail(c);
     html+='</div>';page.innerHTML=html;
   },
 
-  setupFAB(){Utils.id('fab').addEventListener('click',()=>{
-    Utils.id('fab').classList.toggle('open');Utils.id('fabMenu').classList.toggle('show');})},
-  autoSaveIndicator(){setInterval(()=>{const el=Utils.id('saveIndicator');if(el)el.textContent='✅ '+Utils.formatDateTime(new Date().toISOString())},30000)},
-  async refreshSettings(){this.settings=await DB.getAllSettings()}
+  setupFAB(){
+    var fab=Utils.id('fab');var menu=Utils.id('fabMenu');
+    if(!fab||!menu)return;
+    fab.addEventListener('click',function(){fab.classList.toggle('open');menu.classList.toggle('show');});
+    document.addEventListener('click',function(e){
+      if(!fab.contains(e.target)&&!menu.contains(e.target)){fab.classList.remove('open');menu.classList.remove('show');}
+    });
+  }
 };
 
-document.addEventListener('deviceready',()=>App.init(),false);
-if(!window.cordova)document.addEventListener('DOMContentLoaded',()=>App.init());
+document.addEventListener('deviceready',function(){_dbg('deviceready');App.init();},false);
+setTimeout(function(){if(!window.cordova){_dbg('No cordova, init directly');App.init();}},3000);
