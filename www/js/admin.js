@@ -37,7 +37,9 @@ const Admin={
     +'<div class="form-group"><label class="form-label">מייל לעדכונים</label>'
     +'<input class="form-input" id="sEmail" value="'+(settings.email||'')+'" type="email" dir="ltr" onchange="Admin.saveSetting(\'email\',this.value)"></div>'
     +'<div class="form-group"><label class="form-label">מספר מוקד מבחנים</label>'
-    +'<input class="form-input" id="sExamPhone" value="'+(settings.examCenterPhone||'')+'" type="tel" dir="ltr" onchange="Admin.saveSetting(\'examCenterPhone\',this.value)"></div></div>';
+    +'<input class="form-input" id="sExamPhone" value="'+(settings.examCenterPhone||'')+'" type="tel" dir="ltr" onchange="Admin.saveSetting(\'examCenterPhone\',this.value)"></div>'
+    +'<div class="form-group"><label class="form-label">🎙️ שרת תמלול (Whisper URL)</label>'
+    +'<input class="form-input" id="sWhisper" value="'+(settings.whisperServerUrl||'')+'" type="url" dir="ltr" placeholder="https://your-server/api/transcribe" onchange="Admin.saveSetting(\'whisperServerUrl\',this.value)"></div></div>';
 
     // WhatsApp messages
     var msgs=[['msgStage1','📌 לידים — הודעת הזנה'],
