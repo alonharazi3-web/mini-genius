@@ -52,25 +52,17 @@ saveToContactsVcf(name,phone,jobName){
 scheduleReminder(title,dateStr,timeStr){
   _dbg('scheduleReminder: '+title);
   var dt=new Date(dateStr+'T'+(timeStr||'09:00'));
-  // Try local notification first
-  if(window.cordova&&cordova.plugins&&cordova.plugins.notification&&cordova.plugins.notification.local){
-    var id=Math.floor(Math.random()*100000);
-    cordova.plugins.notification.local.schedule({
-      id:id,title:'Mini Genius',text:title,trigger:{at:dt},foreground:true,vibrate:true
-    });
-    _dbg('Local notification scheduled id='+id);
-    Utils.toast('תזכורת נקבעה!','success');
-  }
-  // Also add to calendar (syncs with Samsung Reminder)
   if(window.plugins&&window.plugins.intentShim){
     window.plugins.intentShim.startActivity({
       action:'android.intent.action.INSERT',
       type:'vnd.android.cursor.item/event',
       extras:{'title':'Mini Genius: '+title,'beginTime':dt.getTime(),'endTime':dt.getTime()+3600000,'allDay':false}
-    },function(){_dbg('Calendar added');},function(){_dbg('Calendar fallback');});
-  }else if(!window.cordova||!cordova.plugins||!cordova.plugins.notification){
-    Utils.toast('הוסף ידנית ללוח שנה','info');}
+    },function(){Utils.toast('\u05e0\u05d5\u05e1\u05e3 \u05dc\u05dc\u05d5\u05d7 \u05e9\u05e0\u05d4!','success');},
+    function(){Utils.toast('\u05d4\u05d5\u05e1\u05e3 \u05d9\u05d3\u05e0\u05d9\u05ea','info');});
+  }else{Utils.toast('\u05d4\u05d5\u05e1\u05e3 \u05d9\u05d3\u05e0\u05d9\u05ea \u05dc\u05dc\u05d5\u05d7 \u05e9\u05e0\u05d4','info');}
 },
+
+
 
 // Share via social sharing plugin (like Improv app)
 shareViaPlugin(msg,subj,files){
