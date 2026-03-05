@@ -38,7 +38,18 @@ const Admin={
     +'<input class="form-input" id="sEmail" value="'+(settings.email||'')+'" type="email" dir="ltr" onchange="Admin.saveSetting(\'email\',this.value)"></div>'
     +'<div class="form-group"><label class="form-label">מספר מוקד מבחנים</label>'
     +'<input class="form-input" id="sExamPhone" value="'+(settings.examCenterPhone||'')+'" type="tel" dir="ltr" onchange="Admin.saveSetting(\'examCenterPhone\',this.value)"></div>'
-    +'<div class="form-group"><label class="form-label">🎙️ שרת תמלול (Whisper URL)</label>'
+    +'</div>';
+
+    // FIX #9: Transcription service settings
+    var tSvc=settings.transcriptionService||'';
+    html+='<div class="admin-section"><h3>🎙️ הגדרות תמלול</h3>'
+    +'<div class="form-group"><label class="form-label">שירות תמלול</label><div class="radio-group">'
+    +'<div class="radio-btn '+(tSvc==='assemblyai'?'active-success':'')+'" onclick="Admin._pickTransSvc(\'assemblyai\',this)">AssemblyAI (חינם)</div>'
+    +'<div class="radio-btn '+(tSvc==='whisper'?'active-success':'')+'" onclick="Admin._pickTransSvc(\'whisper\',this)">Whisper (שרת עצמי)</div>'
+    +'</div></div>'
+    +'<div class="form-group"><label class="form-label">AssemblyAI API Key</label>'
+    +'<input class="form-input" id="sAssemblyKey" value="'+(settings.assemblyAiKey||'')+'" dir="ltr" placeholder="הרשם ב-assemblyai.com — $50 קרדיט חינם" onchange="Admin.saveSetting(\'assemblyAiKey\',this.value)"></div>'
+    +'<div class="form-group"><label class="form-label">Whisper Server URL</label>'
     +'<input class="form-input" id="sWhisper" value="'+(settings.whisperServerUrl||'')+'" type="url" dir="ltr" placeholder="https://your-server/api/transcribe" onchange="Admin.saveSetting(\'whisperServerUrl\',this.value)"></div></div>';
 
     // WhatsApp messages
@@ -76,6 +87,11 @@ const Admin={
   },
 
   async saveSetting(key,val){await DB.setSetting(key,val);App.settings[key]=val;},
+  _pickTransSvc(svc,el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.className='radio-btn';});
+    el.classList.add('radio-btn','active-success');
+    Admin.saveSetting('transcriptionService',svc);
+  },
   async addRecruiter(){
     var name=Utils.id('newRecruiter')?.value?.trim();if(!name)return;
     var recs=JSON.parse(App.settings.recruiters||'[]');

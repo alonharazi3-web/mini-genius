@@ -50,8 +50,15 @@ const Stages={
     var c=await DB.getCandidate(cid);if(!c)return;
     c.status=c.prevStatus||'active';c.unfrozenAt=new Date().toISOString();
     await DB.saveCandidate(c);DB.logAction('ביטול הקפאה',c.name);
+    // FIX #3: Ask before sending WhatsApp (not automatic)
     var msg=(App.settings.msgUnfreeze||'').replace('{name}',c.name);
-    if(msg)Utils.openWhatsApp(c.phone,msg);
+    if(msg){
+      Stages.showModal('<div class="modal-title">שלח הודעת עדכון?</div>'
+      +'<p>האם לשלוח הודעת WhatsApp ל'+Utils.escHtml(c.name)+'?</p>'
+      +'<div style="display:flex;gap:8px;margin-top:16px;">'
+      +'<button class="btn btn-wa" style="flex:1" onclick="Stages.closeModal();Utils.openWhatsApp(\''+c.phone+'\',\''+msg.replace(/'/g,"\\'")+'\')">📱 כן, שלח</button>'
+      +'<button class="btn btn-outline" style="flex:1" onclick="Stages.closeModal()">לא עכשיו</button></div>');
+    }
     Utils.toast('הוקפא בוטל','success');App.renderCandidateView(cid);
   },
 
@@ -74,13 +81,13 @@ const Stages={
     var box=el.querySelector('.cb-box');if(box)box.classList.toggle('checked');
   },
 
-  // History with stage names instead of numbers
+  // FIX #10: History shows /7 instead of /10
   renderHistorySummary(c,currentStage){
     var html='<div class="history-compact">';
     for(var i=1;i<currentStage;i++){
       var stageName=Utils.getStageName(i);
       html+='<div>✅ '+stageName;
-      if(c['stage'+i+'_grade'])html+=' — ציון: '+c['stage'+i+'_grade']+'/10';
+      if(c['stage'+i+'_grade'])html+=' — ציון: '+c['stage'+i+'_grade']+'/7';
       if(c['stage'+i+'_completedAt'])html+=' ('+Utils.formatDate(c['stage'+i+'_completedAt'])+')';
       html+='</div>';
     }
@@ -88,24 +95,24 @@ const Stages={
     return html;
   },
 
-  // Evaluation section
+  // FIX #10: Grade scale 1-7
   renderEvaluation(c,stageId){
     var grade=c['stage'+stageId+'_grade']||'';
     var html='<div class="section-title">הערכה</div><div class="card">'
-    +'<div class="form-group"><label class="form-label">ציון 1-10</label><div class="scale-group">';
-    for(var g=1;g<=10;g++){
-      var cls=grade==g?(g>=7?'active':'fail'):'';
+    +'<div class="form-group"><label class="form-label">ציון 1-7</label><div class="scale-group">';
+    for(var g=1;g<=7;g++){
+      var cls=grade==g?(g>=5?'active':'fail'):'';
       html+='<div class="scale-btn '+cls+'" onclick="Stages.setGrade(\''+c.id+'\','+stageId+','+g+')">'+g+'</div>';
     }
     html+='</div></div>';
     html+='<div class="form-group"><label class="form-label">הערות</label>'
     +'<textarea class="form-textarea" rows="2" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_notes\',this.value)">'+Utils.escHtml(c['stage'+stageId+'_notes']||'')+'</textarea></div>';
-    // Decision
     html+='<div class="form-group"><label class="form-label">החלטה</label><div class="radio-group">'
     +'<div class="radio-btn '+(c.status==='pass'?'active-success':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'pass\')">עובר</div>'
     +'<div class="radio-btn '+(c.status==='fail'?'active-danger':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'fail\')">לא עובר</div>'
     +'<div class="radio-btn '+(c.status==='hesitation'?'active':'')+'" onclick="Stages.setDecision(\''+c.id+'\','+stageId+',\'hesitation\')">התלבטות</div>'
     +'</div></div></div>';
+    // FIX #3: Advance button asks about WhatsApp
     if(c.status==='pass'&&stageId<7){
       html+='<div style="padding:12px;"><button class="btn btn-success" style="width:100%;" onclick="Stages.advanceToNextStage(\''+c.id+'\')">העבר ל'+Utils.getStageName(stageId+1)+'</button></div>';
     }
@@ -125,12 +132,29 @@ const Stages={
     await DB.saveCandidate(c);DB.logAction('החלטה',c.name+' - '+decision);
     App.renderCandidateView(id);
   },
+  // FIX #3: Ask before WhatsApp on stage advance
   async advanceToNextStage(id){
     var c=await DB.getCandidate(id);var next=c.stage+1;
     c['stage'+c.stage+'_completedAt']=new Date().toISOString();
     c.stage=next;c.status='active';c.stageEnteredAt=new Date().toISOString();
     await DB.saveCandidate(c);DB.logAction('קידום',c.name+' → '+Utils.getStageName(next));
-    Utils.toast(c.name+' עבר ל'+Utils.getStageName(next),'success');App.navigate('stage',next);
+    Utils.toast(c.name+' עבר ל'+Utils.getStageName(next),'success');
+    // Ask if user wants to send WhatsApp update
+    var msgKey='msgStage'+next;
+    var msg=App.settings[msgKey]||'';
+    if(msg&&c.phone){
+      msg=msg.replace('{name}',c.name).replace('{stageName}',Utils.getStageName(next));
+      var safePhone=c.phone.replace(/'/g,'');
+      var safeMsg=msg.replace(/'/g,"\\'");
+      Stages.showModal('<div class="modal-title">📱 שלח הודעת עדכון?</div>'
+      +'<p>'+Utils.escHtml(c.name)+' עבר ל'+Utils.getStageName(next)+'</p>'
+      +'<p style="color:var(--text-light);font-size:.85rem;">האם לשלוח הודעת WhatsApp?</p>'
+      +'<div style="display:flex;gap:8px;margin-top:16px;">'
+      +'<button class="btn btn-wa" style="flex:1" onclick="Stages.closeModal();Utils.openWhatsApp(\''+safePhone+'\',\''+safeMsg+'\')">📱 כן, שלח</button>'
+      +'<button class="btn btn-outline" style="flex:1" onclick="Stages.closeModal();App.navigate(\'stage\','+next+')">לא עכשיו</button></div>');
+    }else{
+      App.navigate('stage',next);
+    }
   },
   async acceptCandidate(id){
     var c=await DB.getCandidate(id);c.status='accepted';c.acceptedAt=new Date().toISOString();
@@ -148,7 +172,6 @@ const Stages={
     +'<input type="date" class="form-input" value="'+(c['stage'+stageId+'_date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_date\',this.value)"></div>';
     html+='<div class="form-group"><label class="form-label">שעה</label>'
     +'<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value)"></div>';
-    // Stage 6: manager name + WhatsApp to manager
     if(stageId===6){
       html+='<div class="form-group"><label class="form-label">שם מנהל מצטרף</label>'
       +'<input class="form-input" value="'+Utils.escHtml(c.stage6_managerName||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerName\',this.value)" placeholder="שם מנהל"></div>';
@@ -161,10 +184,8 @@ const Stages={
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage'+stageId+'_done\',this)">'
     +'<div class="cb-box '+(c['stage'+stageId+'_done']?'checked':'')+'">✓</div>'
     +'<span>בוצע</span></div>';
-    // Invite WhatsApp
     html+='<div style="margin-top:8px;"><button class="btn btn-wa btn-sm" onclick="Stages.sendInvite(\''+c.id+'\','+stageId+')">📱 שלח זימון</button></div>';
     html+='</div>';
-    // Reminder button
     if(c['stage'+stageId+'_date']){
       html+='<div style="padding:6px 14px;"><button class="btn btn-outline btn-sm" onclick="Utils.scheduleReminder(\''+Utils.escHtml(c.name)+' - '+Utils.escHtml(stageName)+'\',\''+c['stage'+stageId+'_date']+'\',\''+(c['stage'+stageId+'_time']||'09:00')+'\')">🔔 הוסף תזכורת</button></div>';
     }

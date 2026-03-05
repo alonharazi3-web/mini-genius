@@ -1,6 +1,6 @@
 'use strict';
 const App={
-  currentJob:null,currentStage:1,settings:{},_dirty:{},
+  currentJob:null,currentStage:1,settings:{},_dirty:{},_saveTimer:null,
 
   async init(){
     setTimeout(function(){var sp=Utils.id('splashScreen');if(sp)sp.classList.add('hide');
@@ -21,23 +21,49 @@ const App={
       this.navigate('stage',1);
     }
     Tasks.carryOverTasks();
-    // Auto-save every 30 seconds
-    setInterval(function(){App.flushDirty()},30000);
+
+    // FIX #4: Auto-save every 10 seconds (backup) + immediate on pause/visibility
+    setInterval(function(){App.flushDirty()},10000);
+
+    // Save when app goes to background (WhatsApp, phone call, etc.)
+    document.addEventListener('pause',function(){
+      _dbg('APP PAUSE — flushing');App.flushDirty();
+    },false);
+    document.addEventListener('resume',function(){
+      _dbg('APP RESUME');
+    },false);
+    // Also handle browser visibility change
+    document.addEventListener('visibilitychange',function(){
+      if(document.hidden){_dbg('HIDDEN — flushing');App.flushDirty();}
+    },false);
+    // Save before page unload
+    window.addEventListener('beforeunload',function(){App.flushDirty();});
+
     _dbg('App.init done');
   },
 
-  // Mark field as dirty for auto-save
+  // FIX #4: Mark field dirty + debounced save (500ms)
   markDirty(cid,field,val){
     if(!this._dirty[cid])this._dirty[cid]={};
     this._dirty[cid][field]=val;
+    // Debounce: save 500ms after last change
+    if(this._saveTimer)clearTimeout(this._saveTimer);
+    this._saveTimer=setTimeout(function(){App.flushDirty()},500);
   },
   async flushDirty(){
-    for(var cid in this._dirty){
-      var c=await DB.getCandidate(cid);if(!c)continue;
-      for(var f in this._dirty[cid]){c[f]=this._dirty[cid][f];}
-      await DB.saveCandidate(c);
-    }
+    if(this._saveTimer){clearTimeout(this._saveTimer);this._saveTimer=null;}
+    var keys=Object.keys(this._dirty);
+    if(!keys.length)return;
+    var snapshot=Object.assign({},this._dirty);
     this._dirty={};
+    for(var i=0;i<keys.length;i++){
+      var cid=keys[i];
+      try{
+        var c=await DB.getCandidate(cid);if(!c)continue;
+        for(var f in snapshot[cid]){c[f]=snapshot[cid][f];}
+        await DB.saveCandidate(c);
+      }catch(e){_dbg('flushDirty err for '+cid+': '+e);}
+    }
   },
 
   async checkFrozenCandidates(){
@@ -117,7 +143,6 @@ const App={
     active.sort(function(a,b){var pa={high:0,medium:1,low:2};return(pa[a.priority]||1)-(pa[b.priority]||1);});
     var page=Utils.id('mainContent');
     var html='<div class="page active">';
-    // Search
     html+='<div style="padding:10px 14px;"><div class="search-bar">'
     +'<input class="form-input" id="stageSearch" placeholder="חפש..." oninput="App.filterList(this.value)" style="padding-right:14px;">'
     +'</div></div>';
@@ -149,7 +174,7 @@ const App={
   },
 
   async renderCandidateView(id){
-    this.flushDirty();
+    await this.flushDirty();
     var c=await DB.getCandidate(id);if(!c){Utils.toast('לא נמצא','danger');return;}
     var page=Utils.id('mainContent');
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
@@ -157,14 +182,12 @@ const App={
     +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+Utils.escHtml(c.name)+'</div>'
     +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div></div>'
     +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>';
-    // Action buttons
     html+='<div style="display:flex;gap:6px;padding:0 14px;flex-wrap:wrap;">'
     +'<button class="btn btn-call btn-sm" onclick="Utils.openDialer(\''+c.phone+'\')">📞 התקשר</button>'
     +'<button class="btn btn-wa btn-sm" onclick="Stages.sendWhatsApp('+c.stage+',\''+c.id+'\')">📱 וואצאפ</button>';
     if(c.stage<=2)html+='<button class="btn btn-purple btn-sm" onclick="Stages.freezeCandidate(\''+c.id+'\')">❄️ הקפאה</button>';
     html+='<button class="btn btn-danger btn-sm" onclick="Stages.stopProcess(\''+c.id+'\')">⛔ הפסק</button>';
     html+='</div>';
-    // Stage-specific content
     if(c.stage===1)html+=Stage1.renderDetail(c);
     else if(c.stage===2)html+=Stage2.renderDetail(c);
     else if(c.stage===3)html+=Stage3.renderDetail(c);

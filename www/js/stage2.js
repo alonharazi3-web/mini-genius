@@ -43,7 +43,7 @@ var Stage2={
     }else{
       if(c.stage2_recFileId){
         html+='<button class="btn btn-primary btn-sm" onclick="Stage2.transcribe(\''+c.id+'\')">\u{1f399} \u05ea\u05de\u05dc\u05dc (2 \u05d3\u05d5\u05d1\u05e8\u05d9\u05dd)</button>'
-        +'<div class="card-meta" style="margin-top:6px;">\u05d9\u05e9\u05dc\u05d7 \u05dc\u05e9\u05e8\u05ea Whisper \u05e9\u05dc\u05da \u05dc\u05ea\u05de\u05dc\u05d5\u05dc</div>';
+        +'<div class="card-meta" style="margin-top:6px;">AssemblyAI (חינם) או Whisper — הגדר בכפתור למעלה</div>';
       }else{
         html+='<div class="card-meta">\u{1f4a1} \u05d4\u05e2\u05dc\u05d4 \u05d4\u05e7\u05dc\u05d8\u05d4 \u05ea\u05d7\u05d9\u05dc\u05d4 \u05db\u05d3\u05d9 \u05dc\u05ea\u05de\u05dc\u05dc</div>';
       }
@@ -57,6 +57,7 @@ var Stage2={
     // Export buttons appear after questionnaire is filled
     if(c.stage2_q_grade){
       html+='<button class="btn btn-outline btn-sm" onclick="Stage2.exportWord(\''+c.id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 Word</button>';
+      html+='<button class="btn btn-outline btn-sm" onclick="Stage2.exportDocx(\''+c.id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 .doc</button>';
     }
     html+='</div>';
     // Show questionnaire summary if filled
@@ -163,6 +164,31 @@ var Stage2={
     Utils.exportQuestionnaireAsWord(c.name,sections,q('grade'),q('result'),q('notes'));
   },
 
+  // FIX #5: DOCX export (Word-compatible HTML saved as .doc)
+  async exportDocx(id){
+    var c=await DB.getCandidate(id);
+    var q=function(f){return c['stage2_q_'+f]||'';};
+    var sections=[
+      {title:'פרטים אישיים',fields:[
+        {label:'גיל',value:q('age')},{label:'מצב משפחתי',value:q('marital')},
+        {label:'רשיון נהיגה',value:q('license')},{label:'מוכנות לרילוקציה',value:q('relocation')}
+      ]},
+      {title:'מצב רפואי',fields:[
+        {label:'מצב רפואי',value:q('medical'),detail:q('medicalDetail')},
+        {label:'כושר גופני',value:q('fitness')}
+      ]},
+      {title:'רקע והשכלה',fields:[
+        {label:'אנגלית',value:q('english')},{label:'מתמטיקה',value:q('math')},
+        {label:'בגרות',value:q('bagrut'),detail:q('bagrutDetail')}
+      ]},
+      {title:'שירות צבאי',fields:[
+        {label:'שירות צבאי',value:q('militaryService')},
+        {label:'פסיכומטרי',value:q('psychometric')}
+      ]}
+    ];
+    Utils.exportQuestionnaireAsDocx(c.name,sections,q('grade'),q('result'),q('notes'));
+  },
+
   // ===== QUESTIONNAIRE =====
   async openQuestionnaire(id){
     var c=await DB.getCandidate(id);
@@ -266,6 +292,7 @@ var Stage2={
     html+='<div style="padding:14px;display:flex;flex-direction:column;gap:8px;">'
     +'<button class="btn btn-success" style="width:100%;" onclick="Stage2.saveAndBack(\''+id+'\')">\u{1f4be} \u05e9\u05de\u05d5\u05e8 \u05d5\u05d7\u05d6\u05d5\u05e8</button>'
     +'<button class="btn btn-outline" style="width:100%;" onclick="Stage2.exportWord(\''+id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 \u05e9\u05d0\u05dc\u05d5\u05df \u05db-Word</button>'
+    +'<button class="btn btn-outline" style="width:100%;" onclick="Stage2.exportDocx(\''+id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 .doc</button>'
     +'</div></div>';
     page.innerHTML=html;
     window.scrollTo(0,0);
@@ -279,13 +306,15 @@ var Stage2={
       Utils.toast('\u05e1\u05e8\u05d9\u05e7\u05d4 \u05d6\u05de\u05d9\u05e0\u05d4 \u05e8\u05e7 \u05d1\u05d0\u05e4\u05dc\u05d9\u05e7\u05e6\u05d9\u05d4 \u2014 \u05d4\u05e2\u05dc\u05d4 \u05d9\u05d3\u05e0\u05d9\u05ea','warning');return;
     }
     Utils.toast('\u05e1\u05d5\u05e8\u05e7 \u05d4\u05e7\u05dc\u05d8\u05d5\u05ea...','info');
-    // Samsung recording paths (Galaxy A55, Android 14+)
+    // FIX #8: Samsung recording paths — primary path is /Call/ on Galaxy A55
     var paths=[
-      'file:///storage/emulated/0/Recordings/Call/',
       'file:///storage/emulated/0/Call/',
+      'file:///storage/emulated/0/Recordings/Call/',
       'file:///storage/emulated/0/DCIM/.Recordings/',
       'file:///storage/emulated/0/Music/Recordings/',
-      'file:///storage/emulated/0/Sounds/CallRecording/'
+      'file:///storage/emulated/0/Sounds/CallRecording/',
+      'file:///storage/emulated/0/Recordings/',
+      'file:///storage/emulated/0/Record/Call/'
     ];
     var allFiles=[];
     var checked=0;
@@ -296,6 +325,8 @@ var Stage2={
         reader.readEntries(function(entries){
           entries.forEach(function(e){
             if(e.isFile&&/\.(m4a|mp3|wav|aac|ogg|amr|3gp)$/i.test(e.name)){
+              // Match Samsung format: "Call recording NAME_YYMMDD_HHMMSS.m4a"
+              // Also match any audio file in Call folders
               allFiles.push({name:e.name,path:e.nativeURL,modified:0});
             }
           });
@@ -415,57 +446,116 @@ var Stage2={
   },
 
   // ===== TRANSCRIPTION =====
-  // Send recording to Whisper server for 2-speaker diarized transcription
+  // FIX #9: Support AssemblyAI (free tier) + Whisper server
   async transcribe(id){
     var c=await DB.getCandidate(id);
-    if(!c.stage2_recFileId){Utils.toast('\u05d0\u05d9\u05df \u05d4\u05e7\u05dc\u05d8\u05d4','danger');return;}
-    var serverUrl=App.settings.whisperServerUrl;
-    if(!serverUrl){
-      var html='<div class="modal-title">\u{1f399} \u05d4\u05d2\u05d3\u05e8\u05ea \u05e9\u05e8\u05ea \u05ea\u05de\u05dc\u05d5\u05dc</div>'
-      +'<div class="card-meta" style="margin-bottom:10px;">\u05d4\u05db\u05e0\u05e1 \u05db\u05ea\u05d5\u05d1\u05ea \u05e9\u05e8\u05ea Whisper \u05e9\u05dc\u05da \u05d1\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea (\u05e2\u05de\u05d5\u05d3 \u05d0\u05d3\u05de\u05d9\u05df).<br>\u05e4\u05d5\u05e8\u05de\u05d8: <code>https://server/api/transcribe</code></div>'
-      +'<div class="form-group"><label class="form-label">\u05db\u05ea\u05d5\u05d1\u05ea \u05e9\u05e8\u05ea</label>'
-      +'<input class="form-input" id="whisperUrl" dir="ltr" placeholder="https://..."></div>'
-      +'<button class="btn btn-primary" style="width:100%;margin-top:8px;" '
-      +'onclick="Admin.saveSetting(\'whisperServerUrl\',document.getElementById(\'whisperUrl\').value);App.settings.whisperServerUrl=document.getElementById(\'whisperUrl\').value;Stages.closeModal();Stage2.transcribe(\''+id+'\')">\u05e9\u05de\u05d5\u05e8 \u05d5\u05ea\u05de\u05dc\u05dc</button>';
-      Stages.showModal(html);return;
+    if(!c.stage2_recFileId){Utils.toast('אין הקלטה','danger');return;}
+    var service=App.settings.transcriptionService||'';
+    var whisperUrl=App.settings.whisperServerUrl||'';
+    var assemblyKey=App.settings.assemblyAiKey||'';
+    if(!service||(service==='whisper'&&!whisperUrl)||(service==='assemblyai'&&!assemblyKey)){
+      Stage2._showTranscriptionSetup(id);return;
     }
-    Utils.toast('\u05e9\u05d5\u05dc\u05d7 \u05dc\u05ea\u05de\u05dc\u05d5\u05dc...','info');
+    Utils.toast('שולח לתמלול...','info');
     try{
       var f=await DB.getFile(c.stage2_recFileId);
-      if(!f||!f.data){Utils.toast('\u05e7\u05d5\u05d1\u05e5 \u05d4\u05e7\u05dc\u05d8\u05d4 \u05dc\u05d0 \u05e0\u05de\u05e6\u05d0','danger');return;}
-      // Extract base64 data
-      var b64data=f.data.split(',')[1]||f.data;
-      var resp=await fetch(serverUrl,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          audio_base64:b64data,
-          language:'he',
-          diarize:true,
-          num_speakers:2,
-          filename:f.name||'recording.m4a'
-        })
-      });
-      if(!resp.ok)throw new Error('Server: '+resp.status);
-      var result=await resp.json();
-      // Expected format: {segments:[{speaker:'A',text:'...'},...]}} or {text:'...'}
+      if(!f||!f.data){Utils.toast('קובץ הקלטה לא נמצא','danger');return;}
       var transcription;
-      if(result.segments&&result.segments.length>0){
-        transcription=result.segments;
-      }else if(result.text){
-        transcription=[{speaker:'\u05e8\u05db\u05d6',text:result.text}];
+      if(service==='assemblyai'){
+        transcription=await Stage2._transcribeAssemblyAI(f,assemblyKey);
       }else{
-        transcription=[{speaker:'\u05e8\u05db\u05d6',text:JSON.stringify(result)}];
+        transcription=await Stage2._transcribeWhisper(f,whisperUrl);
       }
       c.stage2_transcription=JSON.stringify(transcription);
       c.stage2_transcriptionAt=new Date().toISOString();
       await DB.saveCandidate(c);
-      Utils.toast('\u05ea\u05de\u05dc\u05d5\u05dc \u05d4\u05d5\u05e9\u05dc\u05dd! \u2705','success');
+      Utils.toast('תמלול הושלם! ✅','success');
       App.renderCandidateView(id);
     }catch(e){
       _dbg('Transcribe err:'+e.message);
-      Utils.toast('\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d1\u05ea\u05de\u05dc\u05d5\u05dc: '+e.message,'danger');
+      Utils.toast('שגיאה בתמלול: '+e.message,'danger');
     }
+  },
+
+  async _transcribeAssemblyAI(f,apiKey){
+    var b64data=f.data.split(',')[1]||f.data;
+    var bstr=atob(b64data);var n=bstr.length;var u8=new Uint8Array(n);
+    for(var i=0;i<n;i++)u8[i]=bstr.charCodeAt(i);
+    var uploadResp=await fetch('https://api.assemblyai.com/v2/upload',{
+      method:'POST',headers:{'Authorization':apiKey,'Content-Type':'application/octet-stream'},body:u8
+    });
+    if(!uploadResp.ok)throw new Error('Upload: '+uploadResp.status);
+    var uploadData=await uploadResp.json();
+    var transResp=await fetch('https://api.assemblyai.com/v2/transcript',{
+      method:'POST',headers:{'Authorization':apiKey,'Content-Type':'application/json'},
+      body:JSON.stringify({audio_url:uploadData.upload_url,language_code:'he',speaker_labels:true,speakers_expected:2})
+    });
+    if(!transResp.ok)throw new Error('Transcribe: '+transResp.status);
+    var transData=await transResp.json();var tid=transData.id;
+    var maxTries=60;var tries=0;
+    while(tries<maxTries){
+      await new Promise(function(r){setTimeout(r,3000);});
+      var pollResp=await fetch('https://api.assemblyai.com/v2/transcript/'+tid,{headers:{'Authorization':apiKey}});
+      var pd=await pollResp.json();
+      if(pd.status==='completed'){
+        if(pd.utterances&&pd.utterances.length>0){
+          return pd.utterances.map(function(u){return {speaker:u.speaker==='A'?'רכז':'מועמד',text:u.text};});
+        }
+        return pd.text?[{speaker:'רכז',text:pd.text}]:[{speaker:'',text:'אין תוצאות'}];
+      }else if(pd.status==='error'){throw new Error(pd.error||'Failed');}
+      tries++;
+      if(tries%5===0)Utils.toast('ממתין... ('+tries*3+' שניות)','info');
+    }
+    throw new Error('Timeout');
+  },
+
+  async _transcribeWhisper(f,serverUrl){
+    var b64data=f.data.split(',')[1]||f.data;
+    var resp=await fetch(serverUrl,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({audio_base64:b64data,language:'he',diarize:true,num_speakers:2,filename:f.name||'recording.m4a'})
+    });
+    if(!resp.ok)throw new Error('Server: '+resp.status);
+    var result=await resp.json();
+    if(result.segments&&result.segments.length>0)return result.segments;
+    return result.text?[{speaker:'רכז',text:result.text}]:[{speaker:'רכז',text:JSON.stringify(result)}];
+  },
+
+  _showTranscriptionSetup(id){
+    var svc=App.settings.transcriptionService||'';
+    var html='<div class="modal-title">🎙 הגדרת שירות תמלול</div>'
+    +'<div class="card-meta" style="margin-bottom:10px;">בחר שירות תמלול ורשום מפתח API</div>'
+    +'<div class="form-group"><label class="form-label">שירות</label><div class="radio-group">'
+    +'<div class="radio-btn '+(svc==='assemblyai'?'active-success':'')+'" onclick="Stage2._pickTransSvc(\'assemblyai\',this)">AssemblyAI (חינם)</div>'
+    +'<div class="radio-btn '+(svc==='whisper'?'active-success':'')+'" onclick="Stage2._pickTransSvc(\'whisper\',this)">Whisper (שרת עצמי)</div>'
+    +'</div></div><div id="transSetupFields"></div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="Stage2._saveTransSettings(\''+id+'\')">💾 שמור והתחל תמלול</button>';
+    Stages.showModal(html);if(svc)Stage2._showTransFields(svc);
+  },
+  _selectedTransSvc:'',
+  _pickTransSvc(svc,el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.className='radio-btn';});
+    el.classList.add('radio-btn','active-success');Stage2._selectedTransSvc=svc;Stage2._showTransFields(svc);
+  },
+  _showTransFields(svc){
+    var el=Utils.id('transSetupFields');if(!el)return;
+    if(svc==='assemblyai'){
+      el.innerHTML='<div class="form-group"><label class="form-label">AssemblyAI API Key</label>'
+      +'<input class="form-input" id="transApiKey" dir="ltr" value="'+(App.settings.assemblyAiKey||'')+'" placeholder="your-api-key"></div>'
+      +'<div class="card-meta">$50 קרדיט חינם (~100 שעות). הרשמה: assemblyai.com</div>';
+    }else{
+      el.innerHTML='<div class="form-group"><label class="form-label">כתובת שרת Whisper</label>'
+      +'<input class="form-input" id="transApiKey" dir="ltr" value="'+(App.settings.whisperServerUrl||'')+'" placeholder="https://server/api/transcribe"></div>';
+    }
+  },
+  async _saveTransSettings(id){
+    var svc=Stage2._selectedTransSvc;var key=Utils.id('transApiKey')?.value?.trim();
+    if(!svc){Utils.toast('בחר שירות','danger');return;}
+    if(!key){Utils.toast('הכנס מפתח/כתובת','danger');return;}
+    await Admin.saveSetting('transcriptionService',svc);App.settings.transcriptionService=svc;
+    if(svc==='assemblyai'){await Admin.saveSetting('assemblyAiKey',key);App.settings.assemblyAiKey=key;}
+    else{await Admin.saveSetting('whisperServerUrl',key);App.settings.whisperServerUrl=key;}
+    Stages.closeModal();Stage2.transcribe(id);
   },
 
   // Manual transcription paste
