@@ -7,31 +7,33 @@ const Stage1={
     +'<div style="font-size:1.15rem;font-weight:700;">מועמד חדש</div></div>'
     +'<div style="padding:0 14px;">'
     +'<div class="form-group"><label class="form-label">שם פרטי + אות שם משפחה <span class="required">*</span></label>'
-    +'<input class="form-input" id="fName" placeholder="יוסי כ."></div>'
+    +'<input class="form-input" id="fName" placeholder="יוסי כ." oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">מספר טלפון <span class="required">*</span></label>'
-    +'<input class="form-input" id="fPhone" type="tel" placeholder="050-1234567" dir="ltr"></div>'
+    +'<input class="form-input" id="fPhone" type="tel" placeholder="050-1234567" dir="ltr" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">ממליץ / רכז מפנה</label>'
-    +'<input class="form-input" id="fReferrer"></div>'
+    +'<input class="form-input" id="fReferrer" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">קורות חיים</label>'
     +'<div class="file-upload" id="cvUploadArea" onclick="Utils.id(\'cvFileInput\').click()">'
     +'📎 לחץ לצירוף קובץ</div>'
     +'<input type="file" id="cvFileInput" accept="*/*" style="display:none" onchange="Stage1.handleCvUpload(this)">'
     +'<div id="cvFileName" class="card-meta" style="margin-top:4px;"></div></div>'
     +'<div class="form-group"><label class="form-label">הערות</label>'
-    +'<textarea class="form-textarea" id="fNotes" rows="2"></textarea></div>'
+    +'<textarea class="form-textarea" id="fNotes" rows="2" oninput="Stage1._saveDraft()"></textarea></div>'
     +'<div class="form-group"><label class="form-label">עדיפות <span class="required">*</span></label>'
     +'<div class="radio-group" id="fPriority">'
-    +'<div class="radio-btn" data-val="high" onclick="Stage1._sp(this)">🔴 גבוה</div>'
-    +'<div class="radio-btn active" data-val="medium" onclick="Stage1._sp(this)">🟠 בינוני</div>'
-    +'<div class="radio-btn" data-val="low" onclick="Stage1._sp(this)">🟢 נמוך</div></div></div>'
+    +'<div class="radio-btn" data-val="high" onclick="Stage1._sp(this);Stage1._saveDraft()">🔴 גבוה</div>'
+    +'<div class="radio-btn active" data-val="medium" onclick="Stage1._sp(this);Stage1._saveDraft()">🟠 בינוני</div>'
+    +'<div class="radio-btn" data-val="low" onclick="Stage1._sp(this);Stage1._saveDraft()">🟢 נמוך</div></div></div>'
     +'<div class="form-group"><label class="form-label">תזכורת לשיחה</label>'
-    +'<input class="form-input" id="fReminder" type="datetime-local"></div>'
+    +'<input class="form-input" id="fReminder" type="datetime-local" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">רכז מטפל <span class="required">*</span></label>'
-    +'<select class="form-select" id="fRecruiter"><option value="">בחר...</option></select></div>'
+    +'<select class="form-select" id="fRecruiter" onchange="Stage1._saveDraft()"><option value="">בחר...</option></select></div>'
     +'<div id="dupWarning" style="display:none;" class="warn-box">⚠️ מועמד עם אותו מספר טלפון כבר קיים</div>'
     +'<button class="btn btn-primary" style="width:100%;margin:16px 0;" onclick="Stage1.save()">שמור</button>'
     +'</div></div>';
     page.innerHTML=html;this._loadRecruiters();
+    // FIX #1 v2.5: Restore draft if exists
+    Stage1._restoreDraft();
     Utils.id('fPhone').addEventListener('blur',async function(){
       var phone=this.value.trim();if(phone.length>=9){
         var dups=await DB.findDups(phone);
@@ -79,6 +81,7 @@ const Stage1={
     var rem=Utils.id('fReminder')?.value;
     if(rem){var parts=rem.split('T');Utils.scheduleReminder('התקשר ל'+name,parts[0],parts[1]);}
     Stage1._cvData=null;Stage1._cvName=null;
+    Stage1._clearDraft(); // FIX #1 v2.5: clear draft on save
     Utils.toast('מועמד נשמר! 🎉','success');App.navigate('stage',1);
   },
   renderDetail(c){
@@ -116,8 +119,42 @@ const Stage1={
   async openCv(id){
     var c=await DB.getCandidate(id);if(!c||!c.cvFileId)return;
     var f=await DB.getFile(c.cvFileId);if(!f||!f.data)return;
-    // Open the base64 data
     var a=document.createElement('a');a.href=f.data;a.download=f.name||'cv';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
-  }
+  },
+  // FIX #1 v2.5: Draft save/restore
+  _saveDraft(){
+    var draft={
+      name:Utils.id('fName')?.value||'',
+      phone:Utils.id('fPhone')?.value||'',
+      referrer:Utils.id('fReferrer')?.value||'',
+      notes:Utils.id('fNotes')?.value||'',
+      reminder:Utils.id('fReminder')?.value||'',
+      recruiter:Utils.id('fRecruiter')?.value||'',
+      priority:'medium'
+    };
+    var active=document.querySelector('#fPriority .radio-btn.active');
+    if(active)draft.priority=active.dataset.val;
+    DB.setSetting('newCandidateDraft',JSON.stringify(draft)).catch(function(){});
+  },
+  async _restoreDraft(){
+    try{
+      var raw=await DB.getSetting('newCandidateDraft');
+      if(!raw)return;
+      var d=JSON.parse(raw);
+      if(d.name)Utils.id('fName').value=d.name;
+      if(d.phone)Utils.id('fPhone').value=d.phone;
+      if(d.referrer)Utils.id('fReferrer').value=d.referrer;
+      if(d.notes)Utils.id('fNotes').value=d.notes;
+      if(d.reminder)Utils.id('fReminder').value=d.reminder;
+      if(d.recruiter){var sel=Utils.id('fRecruiter');if(sel)sel.value=d.recruiter;}
+      if(d.priority){
+        document.querySelectorAll('#fPriority .radio-btn').forEach(function(b){
+          b.classList.remove('active');
+          if(b.dataset.val===d.priority)b.classList.add('active');
+        });
+      }
+    }catch(e){_dbg('restoreDraft err:'+e);}
+  },
+  _clearDraft(){DB.setSetting('newCandidateDraft','').catch(function(){});}
 };

@@ -40,6 +40,19 @@ const Admin={
     +'<input class="form-input" id="sExamPhone" value="'+(settings.examCenterPhone||'')+'" type="tel" dir="ltr" onchange="Admin.saveSetting(\'examCenterPhone\',this.value)"></div>'
     +'</div>';
 
+    // FIX #10 v2.5: Notification center + Factory secretary
+    html+='<div class="admin-section"><h3>🏭 הודעות סיום תהליך</h3>'
+    +'<div class="info-box">הודעות שישלחו כשמועמד מתקבל. משתנים: {name}</div>'
+    +'<div class="form-group"><label class="form-label">טלפון מוקד הודעות</label>'
+    +'<input class="form-input" type="tel" dir="ltr" value="'+(settings.notifCenterPhone||'')+'" onchange="Admin.saveSetting(\'notifCenterPhone\',this.value)"></div>'
+    +'<div class="form-group"><label class="form-label">הודעה למוקד</label>'
+    +'<textarea class="form-textarea" rows="2" onchange="Admin.saveSetting(\'notifCenterMsg\',this.value)">'+(settings.notifCenterMsg||'')+'</textarea></div>'
+    +'<div class="form-group"><label class="form-label">טלפון מזכירת מפעל</label>'
+    +'<input class="form-input" type="tel" dir="ltr" value="'+(settings.factorySecretaryPhone||'')+'" onchange="Admin.saveSetting(\'factorySecretaryPhone\',this.value)"></div>'
+    +'<div class="form-group"><label class="form-label">הודעה למזכירה</label>'
+    +'<textarea class="form-textarea" rows="2" onchange="Admin.saveSetting(\'factorySecretaryMsg\',this.value)">'+(settings.factorySecretaryMsg||'')+'</textarea></div>'
+    +'</div>';
+
     // FIX #9: Transcription service settings
     var tSvc=settings.transcriptionService||'';
     html+='<div class="admin-section"><h3>🎙️ הגדרות תמלול</h3>'
@@ -113,8 +126,11 @@ const Admin={
     App.renderJobLabel();Utils.toast('מחזור הוחלף','success');this.render();
   },
   async exportData(){
+    // FIX #2 v2.5: include ALL stores
     var data={candidates:await DB.getAllCandidates(),settings:await DB.getAllSettings(),
-      jobs:await DB.getAllJobs(),tasks:await DB.getAllTasks(),exportDate:new Date().toISOString()};
+      jobs:await DB.getAllJobs(),tasks:await DB.getAllTasks(),
+      daylog:await DB.getAll('daylog'),files:await DB.getAll('files'),
+      exportDate:new Date().toISOString(),version:'2.5'};
     var json=JSON.stringify(data,null,2);
     var filename='minigenius_backup_'+Utils.today()+'.json';
     Utils.writeToCacheAndShare(filename,json,'application/json','Mini Genius גיבוי');
@@ -129,6 +145,8 @@ const Admin={
         if(data.candidates){for(var i=0;i<data.candidates.length;i++){await DB.put('candidates',data.candidates[i]);}}
         if(data.jobs){for(var i=0;i<data.jobs.length;i++){await DB.put('jobs',data.jobs[i]);}}
         if(data.tasks){for(var i=0;i<data.tasks.length;i++){await DB.put('tasks',data.tasks[i]);}}
+        if(data.daylog){for(var i=0;i<data.daylog.length;i++){await DB.put('daylog',data.daylog[i]);}}
+        if(data.files){for(var i=0;i<data.files.length;i++){await DB.put('files',data.files[i]);}}
         if(data.settings){var s=data.settings;for(var k in s){if(s[k]&&s[k].key)await DB.put('settings',s[k]);}}
         App.settings=await DB.getAllSettings();
         Utils.toast('ייבוא הושלם!','success');Admin.render();

@@ -69,6 +69,7 @@ background:#fff;cursor:pointer;font-size:.88rem;transition:.2s;font-weight:500}
 background:#fff;cursor:pointer;font-size:.95rem;font-weight:700;display:flex;
 align-items:center;justify-content:center;transition:.2s}
 .scale-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.scale-btn.fail{background:var(--danger);color:#fff;border-color:var(--danger)}
 .conditional{display:none;padding:10px 14px;margin-top:8px;background:#F8FAFC;
 border-radius:10px;border-right:3px solid var(--accent)}
 .conditional.show{display:block}

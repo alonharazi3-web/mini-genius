@@ -156,10 +156,31 @@ const Stages={
       App.navigate('stage',next);
     }
   },
+  // FIX #11 v2.5: flush dirty BEFORE setting accepted to prevent race condition overwrite
   async acceptCandidate(id){
+    await App.flushDirty(); // prevent dirty 'pass' status from overwriting 'accepted'
     var c=await DB.getCandidate(id);c.status='accepted';c.acceptedAt=new Date().toISOString();
+    c.stage7_decision='accepted';c.stage7_completedAt=new Date().toISOString();
     await DB.saveCandidate(c);DB.logAction('התקבלות',c.name);
-    Utils.toast(c.name+' התקבל! 🎉','success');App.navigate('stage',7);
+    Utils.toast(c.name+' התקבל! 🎉','success');
+    // FIX #10 v2.5: Show completion message buttons
+    var notifPhone=App.settings.notifCenterPhone||'';
+    var notifMsg=(App.settings.notifCenterMsg||'').replace('{name}',c.name);
+    var secPhone=App.settings.factorySecretaryPhone||'';
+    var secMsg=(App.settings.factorySecretaryMsg||'').replace('{name}',c.name);
+    var html='<div class="modal-title">🎉 '+Utils.escHtml(c.name)+' התקבל!</div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px;">';
+    if(notifPhone&&notifMsg){
+      html+='<button class="btn btn-wa" style="width:100%;" onclick="Stages.closeModal();Utils.openWhatsApp(\''+notifPhone+'\',\''+notifMsg.replace(/'/g,"\\'")+'\')">📱 הודעה למוקד הודעות</button>';
+    }
+    if(secPhone&&secMsg){
+      html+='<button class="btn btn-wa" style="width:100%;" onclick="Stages.closeModal();Utils.openWhatsApp(\''+secPhone+'\',\''+secMsg.replace(/'/g,"\\'")+'\')">📱 הודעה למזכירת מפעל</button>';
+    }
+    if(!notifPhone&&!secPhone){
+      html+='<div class="info-box">הגדר מספרי טלפון בדף ניהול כדי לשלוח הודעות סיום</div>';
+    }
+    html+='<button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="Stages.closeModal();App.navigate(\'stage\',7)">סגור</button></div>';
+    Stages.showModal(html);
   },
 
   // Generic detail for stages 4-7
@@ -175,10 +196,9 @@ const Stages={
     if(stageId===6){
       html+='<div class="form-group"><label class="form-label">שם מנהל מצטרף</label>'
       +'<input class="form-input" value="'+Utils.escHtml(c.stage6_managerName||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerName\',this.value)" placeholder="שם מנהל"></div>';
-      html+='<div class="form-group"><label class="form-label">טלפון מנהל</label>'
-      +'<input class="form-input" type="tel" dir="ltr" value="'+Utils.escHtml(c.stage6_managerPhone||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerPhone\',this.value)" placeholder="050-..."></div>';
-      if(c.stage6_managerPhone&&c.stage6_date){
-        html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendManagerReminder(\''+c.id+'\')">📱 שלח תזכורת למנהל</button>';
+      // FIX #9 v2.5: share via WhatsApp contact picker instead of typing manager phone
+      if(c.stage6_date){
+        html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendManagerReminder(\''+c.id+'\')">📱 שלח תזכורת למנהל (בחר איש קשר)</button>';
       }
     }
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage'+stageId+'_done\',this)">'
@@ -201,11 +221,13 @@ const Stages={
     Utils.openWhatsApp(c.phone,msg);
   },
 
+  // FIX #9 v2.5: share message, user picks WhatsApp contact
   async sendManagerReminder(id){
-    var c=await DB.getCandidate(id);if(!c||!c.stage6_managerPhone)return;
-    var msg='שלום, תזכורת לראיון מתקדם עם '+c.name
+    var c=await DB.getCandidate(id);if(!c)return;
+    var managerName=c.stage6_managerName||'מנהל';
+    var msg='שלום '+managerName+', תזכורת לראיון מתקדם עם '+c.name
     +' בתאריך '+(c.stage6_date||'')+' בשעה '+(c.stage6_time||'');
-    Utils.openWhatsApp(c.stage6_managerPhone,msg);
+    Utils.shareWhatsApp(msg);
   },
 
   showModal(html){

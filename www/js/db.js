@@ -52,7 +52,9 @@ msgStage3Results:'\u05e9\u05dc\u05d5\u05dd {name}, \u05ea\u05d5\u05e6\u05d0\u05d
 msgStageInvite:'\u05e9\u05dc\u05d5\u05dd {name}, \u05d4\u05e0\u05da \u05de\u05d5\u05d6\u05de\u05df/\u05ea \u05dc{stageName} \u05d1\u05ea\u05d0\u05e8\u05d9\u05da {date} \u05d1\u05e9\u05e2\u05d4 {time}.',
 msgUnfreeze:'\u05e9\u05dc\u05d5\u05dd {name}, \u05d0\u05e0\u05d5 \u05de\u05d7\u05d3\u05e9\u05d9\u05dd \u05e7\u05e9\u05e8. \u05d4\u05d0\u05dd \u05de\u05e2\u05d5\u05e0\u05d9\u05d9\u05df/\u05ea?',
 alertDaysStage1:'3',alertDaysStage2:'3',alertDaysStage3Exam:'4',alertDaysStage3Transfer:'3',
-alertDaysStage4:'5',alertDaysStage5:'5',alertDaysStage6:'5',alertDaysStage7:'5'};
+alertDaysStage4:'5',alertDaysStage5:'5',alertDaysStage6:'5',alertDaysStage7:'5',
+notifCenterPhone:'',notifCenterMsg:'שלום, {name} התקבל/ה לעבודה במפעל.',
+factorySecretaryPhone:'',factorySecretaryMsg:'שלום, {name} התקבל/ה — נא לתאם כניסה למפעל.'};
 for(const[k,v]of Object.entries(defs)){if(!(k in ex))await this.setSetting(k,v);}
 const jobs=await this.getAllJobs();if(!jobs.length){
 const j=await this.saveJob({id:'j_default',name:'\u05de\u05d7\u05d6\u05d5\u05e8 \u05d2\u05d9\u05d5\u05e1 \u05e8\u05d0\u05e9\u05d5\u05df',active:true});

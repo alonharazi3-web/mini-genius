@@ -20,123 +20,89 @@ daysSince(iso){if(!iso)return 999;return Math.floor((Date.now()-new Date(iso).ge
 workDaysSince(iso){if(!iso)return 999;var c=0;var s=new Date(iso),n=new Date(),d=new Date(s);
 while(d<n){var day=d.getDay();if(day!==5&&day!==6)c++;d.setDate(d.getDate()+1);}return c;},
 
-// ===== FIX #3: WhatsApp — flush BEFORE intent, NO window.open =====
+// ===== FIX #7 v2.5: WhatsApp — wa.me URL (tested on Samsung Galaxy) =====
 async openWhatsApp(phone,msg){
   try{await App.flushDirty();}catch(e){_dbg('flush err:'+e);}
   var clean=phone.replace(/\D/g,'');
   var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
   _dbg('openWhatsApp: '+intl);
-  var waUrl='https://api.whatsapp.com/send?phone='+intl+'&text='+encodeURIComponent(msg);
-  if(window.plugins&&window.plugins.intentShim){
-    window.plugins.intentShim.startActivity({
-      action:'android.intent.action.VIEW',url:waUrl,extras:{}
-    },function(){_dbg('WA OK');},
-    function(e){
-      _dbg('WA err:'+JSON.stringify(e));
-      window.plugins.intentShim.startActivity({
-        action:'android.intent.action.SEND',type:'text/plain',
-        extras:{'android.intent.extra.TEXT':msg},
-        component:{package:'com.whatsapp',class:'com.whatsapp.ContactPicker'}
-      },function(){},function(){
-        Utils.toast('WhatsApp לא נמצא — ההודעה הועתקה','warning');
-        if(navigator.clipboard)navigator.clipboard.writeText(msg).catch(function(){});
-      });
-    });
-  }else{
-    Utils.toast('העתק ושלח דרך WhatsApp','info');
-    if(navigator.clipboard)navigator.clipboard.writeText(msg).catch(function(){});
-  }
+  var waUrl='https://wa.me/'+intl+'?text='+encodeURIComponent(msg);
+  window.open(waUrl,'_system');
 },
 
+// ===== FIX v2.5: WhatsApp share — no phone, user picks contact =====
+shareWhatsApp(msg){
+  _dbg('shareWhatsApp (pick contact)');
+  try{App.flushDirty();}catch(e){}
+  var waUrl='https://wa.me/?text='+encodeURIComponent(msg);
+  window.open(waUrl,'_system');
+},
+
+// ===== FIX #6 v2.5: Dial — location.href works reliably =====
 openDialer(phone){
   try{App.flushDirty();}catch(e){}
-  if(window.plugins&&window.plugins.intentShim){
-    window.plugins.intentShim.startActivity({action:'android.intent.action.DIAL',url:'tel:'+phone,extras:{}},function(){},function(){});
-  }else{window.open('tel:'+phone,'_system');}
+  _dbg('openDialer: '+phone);
+  window.location.href='tel:'+phone;
 },
 sendEmail(to,subj,body){window.open('mailto:'+to+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body),'_system')},
 
-// ===== FIX #7: Save to contacts — proper Android extras + VCF via intent =====
+// ===== FIX #8 v2.5: Save to contacts — Cordova intent + wa.me fallback =====
 saveToContacts(name,phone,jobName){
   _dbg('saveToContacts: '+name);
   try{App.flushDirty();}catch(e){}
   if(window.plugins&&window.plugins.intentShim){
-    window.plugins.intentShim.startActivity({
+    plugins.intentShim.startActivity({
       action:'android.intent.action.INSERT',
       type:'vnd.android.cursor.dir/contact',
-      extras:{'name':name+' - מועמד','phone':phone,'phone_type':'2','company':jobName||'Mini Genius','job_title':'מועמד גיוס'}
+      extras:{name:name+' - מועמד',phone:phone}
     },function(){Utils.toast('נפתח דף איש קשר','success');},
-    function(e){_dbg('Contact err:'+JSON.stringify(e));Utils.saveToContactsVcf(name,phone,jobName);});
-  }else{Utils.saveToContactsVcf(name,phone,jobName);}
-},
-saveToContactsVcf(name,phone,jobName){
-  var vcard='BEGIN:VCARD\nVERSION:3.0\nFN:'+name+' - מועמד\nTEL;TYPE=CELL:'+phone+'\nORG:'+(jobName||'Mini Genius')+'\nTITLE:מועמד גיוס\nEND:VCARD';
-  if(window.cordova&&window.cordova.file){
-    var fn=name.replace(/\s/g,'_')+'.vcf';
-    window.resolveLocalFileSystemURL(cordova.file.cacheDirectory,function(dir){
-      dir.getFile(fn,{create:true,exclusive:false},function(fe){
-        fe.createWriter(function(w){
-          w.onwriteend=function(){
-            window.plugins.intentShim.startActivity({
-              action:'android.intent.action.VIEW',url:fe.nativeURL,type:'text/x-vcard',extras:{}
-            },function(){Utils.toast('נפתח דף איש קשר','success');},
-            function(){Utils.shareViaPlugin('','שמירת איש קשר',[fe.nativeURL]);});
-          };
-          w.write(new Blob([vcard],{type:'text/vcard'}));
-        });
-      });
+    function(e){
+      _dbg('Contact intent err:'+JSON.stringify(e));
+      // Fallback: open WhatsApp with unsaved number → shows "Add to contacts"
+      var clean=phone.replace(/\D/g,'');
+      var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
+      window.open('https://wa.me/'+intl,'_system');
+      Utils.toast('לחץ "הוסף לאנשי קשר" בווצאפ','info');
     });
   }else{
-    try{var blob=new Blob([vcard],{type:'text/vcard'});
-    var url=URL.createObjectURL(blob);var a=document.createElement('a');
-    a.href=url;a.download=name+'.vcf';document.body.appendChild(a);a.click();
-    document.body.removeChild(a);URL.revokeObjectURL(url);
-    Utils.toast('קובץ VCF נוצר','success');
-    }catch(e){Utils.toast('שגיאה','danger');}
+    // HTML fallback: wa.me shows "Add to contacts" for unsaved numbers
+    var clean=phone.replace(/\D/g,'');
+    var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
+    window.open('https://wa.me/'+intl,'_system');
+    Utils.toast('לחץ "הוסף לאנשי קשר" בווצאפ','info');
   }
 },
 
-// ===== FIX #2: Reminders — Google Calendar URL (fixes Double→Long crash) =====
+// ===== FIX #3 v2.5: Calendar — INSERT intent (Samsung Calendar, no permission needed) =====
 scheduleReminder(title,dateStr,timeStr){
   _dbg('scheduleReminder: '+title);
   var dt=new Date(dateStr+'T'+(timeStr||'09:00'));
-  if(!window.plugins||!window.plugins.intentShim){Utils.toast('הוסף ידנית ללוח שנה','info');return;}
   try{App.flushDirty();}catch(e){}
-  var safeTitle=title.replace(/'/g,"\\'");var ms=dt.getTime();
-  var html='<div class="modal-title">בחר שיטת תזכורת</div>'
-  +'<div style="display:flex;flex-direction:column;gap:10px;">'
-  +'<button class="btn btn-primary" style="width:100%;" onclick="Utils._remCalendar(\''+safeTitle+'\','+ms+')">📅 לוח שנה (Google/Samsung)</button>'
-  +'<button class="btn btn-primary" style="width:100%;" onclick="Utils._remAlarm(\''+safeTitle+'\','+ms+')">⏰ שעון מעורר</button>'
-  +'<button class="btn btn-outline" style="width:100%;" onclick="Utils._remIcs(\''+safeTitle+'\','+ms+')">📎 קובץ Outlook (.ics)</button></div>';
-  Stages.showModal(html);
-},
-_remCalendar(title,ms){
-  Stages.closeModal();
-  var sd=new Date(ms),ed=new Date(ms+3600000);
-  function gD(d){var p=function(n){return n<10?'0'+n:n;};return d.getUTCFullYear()+p(d.getUTCMonth()+1)+p(d.getUTCDate())+'T'+p(d.getUTCHours())+p(d.getUTCMinutes())+'00Z';}
-  var url='https://calendar.google.com/calendar/render?action=TEMPLATE'
-  +'&text='+encodeURIComponent('Mini Genius: '+title)
-  +'&dates='+gD(sd)+'/'+gD(ed)+'&details='+encodeURIComponent('תזכורת מ-Mini Genius');
-  window.plugins.intentShim.startActivity({action:'android.intent.action.VIEW',url:url,extras:{}
-  },function(){Utils.toast('נפתח לוח שנה','success');},
-  function(){
-    window.plugins.intentShim.startActivity({
-      action:'android.intent.action.INSERT',url:'content://com.android.calendar/events',
+  // Primary: Cordova intent → Samsung Calendar with 5min reminder
+  if(window.plugins&&window.plugins.intentShim){
+    var startMs=dt.getTime();
+    var endMs=startMs+3600000; // 1 hour
+    plugins.intentShim.startActivity({
+      action:'android.intent.action.INSERT',
       type:'vnd.android.cursor.item/event',
-      extras:{'title':'Mini Genius: '+title,'description':'תזכורת','eventTimezone':'Asia/Jerusalem'}
+      extras:{
+        'title':'Mini Genius: '+title,
+        'beginTime':startMs,
+        'endTime':endMs,
+        'description':'תזכורת מ-Mini Genius',
+        'allDay':false
+      }
     },function(){Utils.toast('נפתח לוח שנה','success');},
-    function(){Utils.toast('לא הצליח — נסה קובץ .ics','warning');});
-  });
+    function(e){
+      _dbg('Calendar intent err:'+JSON.stringify(e));
+      // Fallback: .ics file
+      Utils.generateIcsAndShare(title,dt);
+    });
+  }else{
+    // No Cordova: .ics file download
+    Utils.generateIcsAndShare(title,dt);
+  }
 },
-_remAlarm(title,ms){
-  Stages.closeModal();var dt=new Date(ms);
-  window.plugins.intentShim.startActivity({
-    action:'android.intent.action.SET_ALARM',
-    extras:{'android.intent.extra.alarm.HOUR':dt.getHours(),'android.intent.extra.alarm.MINUTES':dt.getMinutes(),
-    'android.intent.extra.alarm.MESSAGE':'Mini Genius: '+title,'android.intent.extra.alarm.SKIP_UI':false}
-  },function(){Utils.toast('נפתח שעון','success');},function(){Utils.toast('לא הצליח','danger');});
-},
-_remIcs(title,ms){Stages.closeModal();Utils.generateIcsAndShare(title,new Date(ms));},
 
 // ===== Outlook .ics =====
 generateIcsAndShare(title,startDate,endDate,location){
