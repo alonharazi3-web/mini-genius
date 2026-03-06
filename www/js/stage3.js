@@ -25,7 +25,6 @@ const Stage3={
   },
   async _setResult(id,result){var c=await DB.getCandidate(id);c.stage3_result=result;c.stage3_resultAt=new Date().toISOString();
     c.status=result==='pass'?'pass':'fail';
-    if(result==='pass'){var msg=(App.settings.msgStage3Results||'').replace('{name}',c.name);if(msg)Utils.openWhatsApp(c.phone,msg);}
     await DB.saveCandidate(c);DB.logAction('תוצאת מבחן',c.name+' - '+result);App.renderCandidateView(id);},
   async sendToExamCenter(id){var c=await DB.getCandidate(id);var phone=App.settings.examCenterPhone||'';
     if(!phone){Utils.toast('הגדר מספר מוקד בניהול','danger');return;}

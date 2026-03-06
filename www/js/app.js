@@ -25,9 +25,14 @@ const App={
     // FIX #4: Auto-save every 10 seconds (backup) + immediate on pause/visibility
     setInterval(function(){App.flushDirty()},10000);
 
+    // v2.6: Auto-backup to settings every 60 seconds (crash protection)
+    setInterval(function(){App.autoBackup()},60000);
+    // Initial backup after load
+    setTimeout(function(){App.autoBackup()},5000);
+
     // Save when app goes to background (WhatsApp, phone call, etc.)
     document.addEventListener('pause',function(){
-      _dbg('APP PAUSE — flushing');App.flushDirty();
+      _dbg('APP PAUSE — flushing + backup');App.flushDirty();App.autoBackup();
     },false);
     document.addEventListener('resume',function(){
       _dbg('APP RESUME');
@@ -64,6 +69,24 @@ const App={
         await DB.saveCandidate(c);
       }catch(e){_dbg('flushDirty err for '+cid+': '+e);}
     }
+  },
+
+  // v2.6: Auto-backup candidate count to detect data loss
+  async autoBackup(){
+    try{
+      var all=await DB.getAllCandidates();
+      var jobs=await DB.getAllJobs();
+      var count=all.length;
+      var prev=await DB.getSetting('_backupCount');
+      if(prev&&parseInt(prev)>count+2&&count===0){
+        _dbg('⚠️ DATA LOSS DETECTED: had '+prev+' candidates, now '+count);
+        // Don't overwrite — keep old backup count
+        return;
+      }
+      await DB.setSetting('_backupCount',String(count));
+      await DB.setSetting('_backupDate',new Date().toISOString());
+      _dbg('Auto-backup: '+count+' candidates, '+jobs.length+' jobs');
+    }catch(e){_dbg('autoBackup err: '+e);}
   },
 
   async checkFrozenCandidates(){

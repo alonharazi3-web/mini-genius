@@ -20,22 +20,47 @@ daysSince(iso){if(!iso)return 999;return Math.floor((Date.now()-new Date(iso).ge
 workDaysSince(iso){if(!iso)return 999;var c=0;var s=new Date(iso),n=new Date(),d=new Date(s);
 while(d<n){var day=d.getDay();if(day!==5&&day!==6)c++;d.setDate(d.getDate()+1);}return c;},
 
-// ===== FIX #7 v2.5: WhatsApp — wa.me URL (tested on Samsung Galaxy) =====
+// ===== v2.6: WhatsApp to known number — whatsapp:// scheme (tested OK on Samsung) =====
 async openWhatsApp(phone,msg){
   try{await App.flushDirty();}catch(e){_dbg('flush err:'+e);}
   var clean=phone.replace(/\D/g,'');
   var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
-  _dbg('openWhatsApp: '+intl);
-  var waUrl='https://wa.me/'+intl+'?text='+encodeURIComponent(msg);
-  window.open(waUrl,'_system');
+  _dbg('openWhatsApp v2.6: '+intl);
+  // Method 3: whatsapp:// scheme — tested working
+  try{
+    window.location.href='whatsapp://send?phone='+intl+'&text='+encodeURIComponent(msg);
+    return;
+  }catch(e){_dbg('whatsapp:// err: '+e);}
+  // Fallback method 7: socialsharing plugin
+  if(window.plugins&&window.plugins.socialsharing){
+    window.plugins.socialsharing.shareViaWhatsAppToReceiver(
+      '+'+intl,msg,null,null,
+      function(){_dbg('WA socialsharing OK');},
+      function(e){_dbg('WA socialsharing err: '+e);Utils.toast('שגיאת WhatsApp','danger');}
+    );
+  }else{
+    Utils.toast('העתק ושלח דרך WhatsApp','info');
+    if(navigator.clipboard)navigator.clipboard.writeText(msg).catch(function(){});
+  }
 },
 
-// ===== FIX v2.5: WhatsApp share — no phone, user picks contact =====
+// ===== v2.6: WhatsApp share — user picks contact (tested method 4: socialsharing) =====
 shareWhatsApp(msg){
-  _dbg('shareWhatsApp (pick contact)');
+  _dbg('shareWhatsApp v2.6 (pick contact)');
   try{App.flushDirty();}catch(e){}
-  var waUrl='https://wa.me/?text='+encodeURIComponent(msg);
-  window.open(waUrl,'_system');
+  if(window.plugins&&window.plugins.socialsharing){
+    window.plugins.socialsharing.shareViaWhatsApp(
+      msg,null,null,
+      function(){_dbg('WA share OK');},
+      function(e){
+        _dbg('WA share err: '+e);
+        // Fallback: wa.me without number
+        window.location.href='whatsapp://send?text='+encodeURIComponent(msg);
+      }
+    );
+  }else{
+    window.location.href='whatsapp://send?text='+encodeURIComponent(msg);
+  }
 },
 
 // ===== FIX #6 v2.5: Dial — location.href works reliably =====
@@ -46,61 +71,92 @@ openDialer(phone){
 },
 sendEmail(to,subj,body){window.open('mailto:'+to+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body),'_system')},
 
-// ===== FIX #8 v2.5: Save to contacts — Cordova intent + wa.me fallback =====
+// ===== v2.6: Save to contacts — tel: URI opens dialer, user presses + to save =====
 saveToContacts(name,phone,jobName){
-  _dbg('saveToContacts: '+name);
+  _dbg('saveToContacts v2.6: '+name);
   try{App.flushDirty();}catch(e){}
-  if(window.plugins&&window.plugins.intentShim){
-    plugins.intentShim.startActivity({
-      action:'android.intent.action.INSERT',
-      type:'vnd.android.cursor.dir/contact',
-      extras:{name:name+' - מועמד',phone:phone}
-    },function(){Utils.toast('נפתח דף איש קשר','success');},
-    function(e){
-      _dbg('Contact intent err:'+JSON.stringify(e));
-      // Fallback: open WhatsApp with unsaved number → shows "Add to contacts"
-      var clean=phone.replace(/\D/g,'');
-      var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
-      window.open('https://wa.me/'+intl,'_system');
-      Utils.toast('לחץ "הוסף לאנשי קשר" בווצאפ','info');
-    });
-  }else{
-    // HTML fallback: wa.me shows "Add to contacts" for unsaved numbers
-    var clean=phone.replace(/\D/g,'');
-    var intl=clean.startsWith('0')?'972'+clean.substring(1):clean;
-    window.open('https://wa.me/'+intl,'_system');
-    Utils.toast('לחץ "הוסף לאנשי קשר" בווצאפ','info');
-  }
+  Utils.toast('בחייגן לחץ + כדי לשמור את '+name,'info');
+  setTimeout(function(){
+    window.location.href='tel:'+phone;
+  },800); // Small delay so toast is visible
 },
 
-// ===== FIX #3 v2.5: Calendar — INSERT intent (Samsung Calendar, no permission needed) =====
+// ===== v2.6: Calendar — .ics file → open in Samsung/Google Calendar directly =====
 scheduleReminder(title,dateStr,timeStr){
-  _dbg('scheduleReminder: '+title);
+  _dbg('scheduleReminder v2.6: '+title);
   var dt=new Date(dateStr+'T'+(timeStr||'09:00'));
   try{App.flushDirty();}catch(e){}
-  // Primary: Cordova intent → Samsung Calendar with 5min reminder
-  if(window.plugins&&window.plugins.intentShim){
-    var startMs=dt.getTime();
-    var endMs=startMs+3600000; // 1 hour
-    plugins.intentShim.startActivity({
-      action:'android.intent.action.INSERT',
-      type:'vnd.android.cursor.item/event',
-      extras:{
-        'title':'Mini Genius: '+title,
-        'beginTime':startMs,
-        'endTime':endMs,
-        'description':'תזכורת מ-Mini Genius',
-        'allDay':false
-      }
-    },function(){Utils.toast('נפתח לוח שנה','success');},
-    function(e){
-      _dbg('Calendar intent err:'+JSON.stringify(e));
-      // Fallback: .ics file
-      Utils.generateIcsAndShare(title,dt);
-    });
+  var startDate=dt;
+  var endDate=new Date(dt.getTime()+3600000);
+  function pad(n){return n<10?'0'+n:n;}
+  function icsD(d){return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+pad(d.getUTCMinutes())+'00Z';}
+  var ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MiniGenius//HR//HE\r\nBEGIN:VEVENT\r\n'
+  +'UID:mg-'+Date.now()+'@app\r\nDTSTART:'+icsD(startDate)+'\r\nDTEND:'+icsD(endDate)+'\r\n'
+  +'SUMMARY:Mini Genius: '+title+'\r\nDESCRIPTION:תזכורת מ-Mini Genius\r\n'
+  +'BEGIN:VALARM\r\nTRIGGER:-PT5M\r\nACTION:DISPLAY\r\nDESCRIPTION:reminder\r\nEND:VALARM\r\n'
+  +'END:VEVENT\r\nEND:VCALENDAR';
+  var fn='reminder_'+Date.now()+'.ics';
+  if(window.cordova&&window.cordova.file){
+    window.resolveLocalFileSystemURL(cordova.file.cacheDirectory,function(dir){
+      dir.getFile(fn,{create:true,exclusive:false},function(fe){
+        fe.createWriter(function(w){
+          w.onwriteend=function(){
+            _dbg('ICS written: '+fe.nativeURL);
+            // Try to open directly with calendar apps
+            if(window.plugins&&window.plugins.intentShim){
+              // Try Samsung Calendar first
+              plugins.intentShim.startActivity({
+                action:'android.intent.action.VIEW',
+                url:fe.nativeURL,
+                type:'text/calendar',
+                extras:{},
+                component:{package:'com.samsung.android.calendar'}
+              },function(){_dbg('Samsung Calendar OK');Utils.toast('נפתח לוח שנה','success');},
+              function(){
+                // Try Google Calendar
+                plugins.intentShim.startActivity({
+                  action:'android.intent.action.VIEW',
+                  url:fe.nativeURL,
+                  type:'text/calendar',
+                  extras:{},
+                  component:{package:'com.google.android.calendar'}
+                },function(){_dbg('Google Calendar OK');Utils.toast('נפתח לוח שנה','success');},
+                function(){
+                  // Fallback: generic VIEW — let Android pick
+                  plugins.intentShim.startActivity({
+                    action:'android.intent.action.VIEW',
+                    url:fe.nativeURL,
+                    type:'text/calendar',
+                    extras:{}
+                  },function(){Utils.toast('נפתח לוח שנה','success');},
+                  function(){
+                    // Last resort: social sharing
+                    if(window.plugins.socialsharing){
+                      window.plugins.socialsharing.shareWithOptions({
+                        files:[fe.nativeURL],subject:'Mini Genius: '+title,message:''
+                      },function(){},function(){Utils.toast('לא הצליח לפתוח לוח שנה','danger');});
+                    }
+                  });
+                });
+              });
+            }else if(window.plugins&&window.plugins.socialsharing){
+              window.plugins.socialsharing.shareWithOptions({
+                files:[fe.nativeURL],subject:'Mini Genius: '+title,message:''
+              },function(){},function(){});
+            }
+          };
+          w.onerror=function(e){_dbg('ICS write err:'+e);Utils.toast('שגיאה ביצירת קובץ','danger');};
+          w.write(new Blob([ics],{type:'text/calendar'}));
+        });
+      },function(e){_dbg('getFile err:'+e);});
+    },function(e){_dbg('FS err:'+e);});
   }else{
-    // No Cordova: .ics file download
-    Utils.generateIcsAndShare(title,dt);
+    // Browser fallback: blob download
+    var blob=new Blob([ics],{type:'text/calendar'});
+    var url=URL.createObjectURL(blob);var a=document.createElement('a');
+    a.href=url;a.download=fn;document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+    Utils.toast('קובץ ICS נוצר','success');
   }
 },
 

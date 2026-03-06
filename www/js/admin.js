@@ -14,7 +14,10 @@ const Admin={
       var isActive=j.id===App.currentJob;
       html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
       +'<span style="flex:1;font-weight:'+(isActive?'700':'400')+';">'+(isActive?'⭐ ':'')+Utils.escHtml(j.name)+'</span>';
-      if(!isActive)html+='<button class="btn btn-primary btn-sm" onclick="Admin.switchJob(\''+j.id+'\')">הפעל</button>';
+      if(!isActive){
+        html+='<button class="btn btn-primary btn-sm" onclick="Admin.switchJob(\''+j.id+'\')">הפעל</button>';
+        html+='<button class="btn btn-danger btn-sm" onclick="Admin.deleteJob(\''+j.id+'\')">🗑</button>';
+      }
       html+='</div>';
     });
     html+='<div style="display:flex;gap:6px;margin-top:10px;">'
@@ -125,12 +128,63 @@ const Admin={
     App.currentJob=jobId;await this.saveSetting('activeJobId',jobId);
     App.renderJobLabel();Utils.toast('מחזור הוחלף','success');this.render();
   },
+  async deleteJob(jobId){
+    var jobs=await DB.getAllJobs();
+    var job=jobs.find(function(j){return j.id===jobId});
+    if(!job)return;
+    // Check for candidates
+    var cands=await DB.getAllCandidates();
+    var jobCands=cands.filter(function(c){return c.jobId===jobId});
+    var msg='למחוק את המחזור "'+job.name+'"?';
+    if(jobCands.length)msg+='\nשים לב: יש '+jobCands.length+' מועמדים במחזור זה. המועמדים לא יימחקו.';
+    if(!confirm(msg))return;
+    await DB.del('jobs',jobId);
+    Utils.toast('מחזור נמחק','success');this.render();
+  },
   async exportData(){
-    // FIX #2 v2.5: include ALL stores
-    var data={candidates:await DB.getAllCandidates(),settings:await DB.getAllSettings(),
-      jobs:await DB.getAllJobs(),tasks:await DB.getAllTasks(),
-      daylog:await DB.getAll('daylog'),files:await DB.getAll('files'),
-      exportDate:new Date().toISOString(),version:'2.5'};
+    // FIX #2 v2.5: comprehensive export with all data
+    var settings=await DB.getAllSettings();
+    var data={
+      version:'2.5',
+      exportDate:new Date().toISOString(),
+      // All stores
+      candidates:await DB.getAllCandidates(),
+      jobs:await DB.getAllJobs(),
+      tasks:await DB.getAllTasks(),
+      daylog:await DB.getAll('daylog'),
+      files:await DB.getAll('files'),
+      // Settings as-is (includes everything)
+      settings:settings,
+      // Human-readable summary
+      summary:{
+        recruiters:JSON.parse(settings.recruiters||'[]'),
+        leadRecruiter:settings.leadRecruiter||'',
+        email:settings.email||'',
+        examCenterPhone:settings.examCenterPhone||'',
+        notifCenterPhone:settings.notifCenterPhone||'',
+        notifCenterMsg:settings.notifCenterMsg||'',
+        factorySecretaryPhone:settings.factorySecretaryPhone||'',
+        factorySecretaryMsg:settings.factorySecretaryMsg||'',
+        transcriptionService:settings.transcriptionService||'',
+        whatsappMessages:{
+          stage1:settings.msgStage1||'',
+          stage2:settings.msgStage2||'',
+          stage3Coord:settings.msgStage3Coord||'',
+          stage3Results:settings.msgStage3Results||'',
+          stageInvite:settings.msgStageInvite||'',
+          unfreeze:settings.msgUnfreeze||''
+        },
+        alertDays:{
+          stage1:settings.alertDaysStage1||'3',
+          stage2:settings.alertDaysStage2||'3',
+          stage3:settings.alertDaysStage3Exam||'4',
+          stage4:settings.alertDaysStage4||'5',
+          stage5:settings.alertDaysStage5||'5',
+          stage6:settings.alertDaysStage6||'5',
+          stage7:settings.alertDaysStage7||'5'
+        }
+      }
+    };
     var json=JSON.stringify(data,null,2);
     var filename='minigenius_backup_'+Utils.today()+'.json';
     Utils.writeToCacheAndShare(filename,json,'application/json','Mini Genius גיבוי');
