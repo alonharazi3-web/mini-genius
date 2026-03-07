@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<widget id="com.recruit.minigenius" version="2.8.0"
+  xmlns="http://www.w3.org/ns/widgets"
+  xmlns:cdv="http://cordova.apache.org/ns/1.0"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+  <name>Mini Genius</name>
+  <description>HR Recruitment App</description>
+  <content src="index.html" />
+  <access origin="*" />
+  <allow-intent href="http://*/*" />
+  <allow-intent href="https://*/*" />
+  <allow-intent href="tel:*" />
+  <allow-intent href="mailto:*" />
+  <allow-intent href="whatsapp://*" />
+  <allow-intent href="content://*/*" />
+  <allow-navigation href="*" />
+  <preference name="Orientation" value="portrait" />
+  <preference name="AndroidPersistentFileLocation" value="Compatibility" />
+  <preference name="AndroidXEnabled" value="true" />
+  <preference name="android-minSdkVersion" value="26" />
+  <preference name="android-targetSdkVersion" value="35" />
+  <preference name="StatusBarOverlaysWebView" value="false" />
+  <preference name="StatusBarBackgroundColor" value="#1B2A4A" />
+  <preference name="StatusBarStyle" value="lightcontent" />
+  <preference name="SplashScreenDelay" value="0" />
+  <preference name="AutoHideSplashScreen" value="true" />
+  <platform name="android">
+    <icon src="www/img/icon.png" density="ldpi" />
+    <icon src="www/img/icon.png" density="mdpi" />
+    <icon src="www/img/icon.png" density="hdpi" />
+    <icon src="www/img/icon.png" density="xhdpi" />
+    <icon src="www/img/icon.png" density="xxhdpi" />
+    <icon src="www/img/icon.png" density="xxxhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="ldpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="mdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="hdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xxhdpi" />
+    <icon background="#1a1a2e" foreground="www/img/icon.png" density="xxxhdpi" />
+    <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+      <application android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true" />
+    </edit-config>
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+      <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+      </queries>
+    </config-file>
+  </platform>
+  <plugin name="cordova-plugin-file" spec="^8.1.0" />
+  <plugin name="cordova-plugin-device" spec="^3.0.0" />
+  <plugin name="cordova-plugin-statusbar" spec="^4.0.0" />
+  <plugin name="cordova-plugin-x-socialsharing" spec="^6.0.4" />
+  <plugin name="com-darryncampbell-cordova-plugin-intent" spec="^2.2.0" />
+  <engine name="android" spec="^13.0.0" />
+</widget>

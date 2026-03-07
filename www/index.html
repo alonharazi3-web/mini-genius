@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content: blob:;">
+<title>Mini Genius</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Splash Screen -->
+<div class="splash-screen" id="splashScreen">
+<img src="img/splash.png" alt="Mini Genius">
+</div>
+
+<!-- Debug Log -->
+<div id="debugLog" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,.85);
+color:#0f0;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;padding:4px 8px;
+direction:ltr;text-align:left;display:none;">
+<div style="display:flex;justify-content:space-between;"><span>Debug Log v2.8</span>
+<span onclick="this.parentElement.parentElement.style.display='none'" style="cursor:pointer;color:red;font-size:14px;">X</span></div>
+<div id="debugLines"></div>
+</div>
+
+<!-- Header -->
+<div class="header">
+<img src="img/icon.png" style="width:36px;height:36px;border-radius:8px;">
+<div>
+<h1>Mini Genius</h1>
+<div class="header-sub" id="appVersion">v2.8</div>
+</div>
+<button class="header-btn" onclick="App.navigate('daysummary')" title="סיכום יום">📋</button>
+<button class="header-btn" onclick="App.navigate('admin')" title="ניהול">⚙️</button>
+</div>
+
+<!-- Active Job -->
+<div class="job-label" id="jobLabel">טוען...</div>
+
+<!-- Tab Bar -->
+<div class="tab-bar" id="tabBar"></div>
+
+<!-- Main Content -->
+<div id="mainContent"></div>
+
+<!-- FAB -->
+<div class="fab-menu" id="fabMenu">
+<button class="fab-item" onclick="Stage1.renderForm();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">👤</span> 📌 מועמד חדש</button>
+<button class="fab-item" onclick="Dashboard.render();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">📊</span> 📊 דשבורד</button>
+<button class="fab-item" onclick="Tasks.render();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">✅</span> ✅ משימות</button>
+<button class="fab-item" onclick="DaySummary.render();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">📋</span> 📋 סיכום יום</button>
+</div>
+<button class="fab" id="fab">+</button>
+
+<!-- Scripts -->
+<script>
+// Debug logger
+var _dbgEl,_dbgOn=true;
+function _dbg(msg){
+  if(!_dbgOn)return;
+  if(!_dbgEl)_dbgEl=document.getElementById('debugLines');
+  if(!_dbgEl)return;
+  var t=new Date().toLocaleTimeString('he-IL');
+  var d=document.createElement('div');d.textContent=t+' '+msg;_dbgEl.appendChild(d);
+  if(_dbgEl.children.length>50)_dbgEl.removeChild(_dbgEl.firstChild);
+  _dbgEl.parentElement.scrollTop=99999;
+}
+window.onerror=function(m,s,l){_dbg('ERR: '+m+' @'+l);};
+window.addEventListener('unhandledrejection',function(e){_dbg('PROMISE: '+e.reason);});
+// Triple-tap to show debug
+var _tapCount=0,_tapTimer;
+document.addEventListener('click',function(e){
+  if(e.target.closest('.header')){_tapCount++;clearTimeout(_tapTimer);
+  _tapTimer=setTimeout(function(){_tapCount=0},500);
+  if(_tapCount>=3){document.getElementById('debugLog').style.display='block';_tapCount=0;}}
+});
+_dbg('Page loaded, UA: '+navigator.userAgent.substr(0,60));
+</script>
+<script src="js/db.js" onload="_dbg('db.js OK')"></script>
+<script src="js/docx-builder.js" onload="_dbg('docx-builder.js OK')"></script>
+<script src="js/utils.js" onload="_dbg('utils.js OK')"></script>
+<script src="js/stages.js" onload="_dbg('stages.js OK')"></script>
+<script src="js/stage1.js" onload="_dbg('stage1.js OK')"></script>
+<script src="js/stage2.js" onload="_dbg('stage2.js OK')"></script>
+<script src="js/stage3.js" onload="_dbg('stage3.js OK')"></script>
+<script src="js/dashboard.js" onload="_dbg('dashboard.js OK')"></script>
+<script src="js/tasks.js" onload="_dbg('tasks.js OK')"></script>
+<script src="js/daysummary.js" onload="_dbg('daysummary.js OK')"></script>
+<script src="js/admin.js" onload="_dbg('admin.js OK')"></script>
+<script src="js/app.js" onload="_dbg('app.js OK')"></script>
+<script src="cordova.js"></script>
+</body>
+</html>
