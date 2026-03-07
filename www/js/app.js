@@ -10,14 +10,15 @@ const App={
     this.settings=await DB.getAllSettings();
     _dbg('DB ready, settings loaded');
     this.checkFrozenCandidates();
+    // v2.8: Set currentJob BEFORE rendering UI
+    var jobs=await DB.getAllJobs();
+    var activeId=this.settings.activeJobId;
+    if(activeId){this.currentJob=activeId;}
+    else if(jobs.length){this.currentJob=jobs[0].id;await DB.setSetting('activeJobId',this.currentJob);}
     this.setupRouting();this.renderJobLabel();this.renderTabs();this.setupFAB();
     var recruiters=JSON.parse(this.settings.recruiters||'[]');
     if(!recruiters.length){this.navigate('admin');Utils.toast('הגדר רכזים תחילה','warning');}
     else{
-      var jobs=await DB.getAllJobs();
-      var activeId=this.settings.activeJobId;
-      if(activeId){this.currentJob=activeId;}
-      else if(jobs.length){this.currentJob=jobs[0].id;}
       this.navigate('stage',1);
     }
     Tasks.carryOverTasks();

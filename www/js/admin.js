@@ -153,7 +153,7 @@ const Admin={
     _dbg('Export: '+candidates.length+' candidates, '+settingsRows.length+' settings, '+jobs.length+' jobs');
 
     var data={
-      version:'2.6',
+      version:'2.8',
       exportDate:new Date().toISOString(),
       candidates:candidates,
       jobs:jobs,
