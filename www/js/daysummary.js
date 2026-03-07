@@ -96,11 +96,13 @@ const DaySummary={
         var c=withQ[i];
         try{
           var blob=DaySummary._buildDocx(c);
+          var preview=DaySummary._buildPreviewHtml(c);
           DaySummary._files.push({
             name:'שאלון_'+c.name.replace(/\s/g,'_')+'.docx',
             icon:'📄',
             label:'שאלון — '+c.name,
             blob:blob,
+            previewHtml:preview,
             mime:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             type:'docx'
           });
@@ -152,49 +154,33 @@ const DaySummary={
     if(!f)return;
     _dbg('Preview file: '+f.name);
 
+    // Both HTML and DOCX use in-app overlay preview
+    var previewHtml='';
     if(f.type==='html'){
-      // Fix #2: Full-screen overlay with prominent close button above safe area
-      var existing=document.getElementById('previewOverlay');
-      if(existing)existing.remove();
-      var overlay=document.createElement('div');
-      overlay.id='previewOverlay';
-      overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#fff;display:flex;flex-direction:column;';
-      // Close bar — tall, prominent, always accessible
-      var bar=document.createElement('div');
-      bar.style.cssText='background:#E74C3C;color:#fff;padding:16px 20px;padding-top:calc(16px + env(safe-area-inset-top, 32px));display:flex;align-items:center;gap:12px;flex-shrink:0;min-height:60px;cursor:pointer;';
-      bar.innerHTML='<span style="font-size:1.5rem;font-weight:900;">✕</span>'
-      +'<span style="font-weight:700;font-size:1.05rem;flex:1;">'+Utils.escHtml(f.label)+'</span>'
-      +'<span style="font-size:.85rem;opacity:.8;">לחץ לסגירה</span>';
-      bar.onclick=function(){overlay.remove();};
-      overlay.appendChild(bar);
-      // iframe
-      var iframe=document.createElement('iframe');
-      iframe.style.cssText='flex:1;border:none;width:100%;';
-      iframe.srcdoc=f.content;
-      overlay.appendChild(iframe);
-      document.body.appendChild(overlay);
-
+      previewHtml=f.content;
     }else if(f.type==='docx'){
-      // Fix #3: Word — write to cache, then share with "open with" chooser
-      if(window.cordova&&window.cordova.file){
-        var url=await DaySummary._writeBlobToCache(f.name,f.blob);
-        if(url&&window.plugins&&window.plugins.socialsharing){
-          window.plugins.socialsharing.shareWithOptions({
-            files:[url],
-            subject:f.label,
-            message:'',
-            chooserTitle:'פתח עם...'
-          },function(){_dbg('Docx shared for view');},
-          function(e){_dbg('Docx share err: '+e);Utils.toast('לא נמצאה אפליקציה לפתיחת Word','warning');});
-        }else{
-          Utils.toast('לא ניתן לפתוח','danger');
-        }
-      }else{
-        var u=URL.createObjectURL(f.blob);
-        var a=document.createElement('a');a.href=u;a.download=f.name;
-        document.body.appendChild(a);a.click();document.body.removeChild(a);
-      }
+      // v2.8: Render Word content as HTML for in-app preview
+      previewHtml=f.previewHtml||'<html dir="rtl"><body style="font-family:Arial;padding:20px;direction:rtl;"><p>תצוגה מקדימה לא זמינה</p></body></html>';
     }
+
+    var existing=document.getElementById('previewOverlay');
+    if(existing)existing.remove();
+    var overlay=document.createElement('div');
+    overlay.id='previewOverlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#fff;display:flex;flex-direction:column;';
+    // Close bar
+    var bar=document.createElement('div');
+    bar.style.cssText='background:#E74C3C;color:#fff;padding:16px 20px;padding-top:calc(16px + env(safe-area-inset-top, 32px));display:flex;align-items:center;gap:12px;flex-shrink:0;min-height:60px;cursor:pointer;';
+    bar.innerHTML='<span style="font-size:1.5rem;font-weight:900;">✕</span>'
+    +'<span style="font-weight:700;font-size:1.05rem;flex:1;">'+Utils.escHtml(f.label)+'</span>'
+    +'<span style="font-size:.85rem;opacity:.8;">לחץ לסגירה</span>';
+    bar.onclick=function(){overlay.remove();};
+    overlay.appendChild(bar);
+    var iframe=document.createElement('iframe');
+    iframe.style.cssText='flex:1;border:none;width:100%;';
+    iframe.srcdoc=previewHtml;
+    overlay.appendChild(iframe);
+    document.body.appendChild(overlay);
   },
 
   // Fix #1: Send — use shareWithOptions (not shareViaEmail which crashes)
@@ -245,6 +231,38 @@ const DaySummary={
         Utils.toast('הגדר מייל עדכונים בדף ניהול','warning');
       }
     }catch(e){_dbg('sendSelected err: '+e);Utils.toast('שגיאה','danger');}
+  },
+
+  // Build HTML preview of questionnaire (for in-app viewing)
+  _buildPreviewHtml:function(c){
+    var q=function(f){return c['stage2_q_'+f]||'';};
+    var sections=[
+      {title:'פרטים אישיים',fields:[
+        {label:'גיל',value:q('age')},{label:'מצב משפחתי',value:q('marital')},
+        {label:'שוחח עם בן/בת זוג',value:q('partnerTalk')},{label:'ילדים',value:q('children')},
+        {label:'מוכנות לרילוקציה',value:q('relocation')},{label:'משרה מלאה',value:q('fullTime')},
+        {label:'רשיון נהיגה',value:q('license')},{label:'רשיון C',value:q('licenseC')}
+      ]},
+      {title:'מצב רפואי',fields:[
+        {label:'מצב רפואי',value:q('medical'),detail:q('medicalDetail')},
+        {label:'כושר גופני',value:q('fitness')},
+        {label:'פציעת צה"ל',value:q('idfInjury')},
+        {label:'ראייה/עיוורון',value:q('vision'),detail:q('visionDetail')},
+        {label:'פרופיל צבאי',value:q('idfProfile')}
+      ]},
+      {title:'רקע והשכלה',fields:[
+        {label:'עיסוק נוכחי',value:q('currentJob')},
+        {label:'בגרות מלאה',value:q('bagrut'),detail:q('bagrutDetail')},
+        {label:'אנגלית (0-7)',value:q('english')},{label:'מתמטיקה (0-5)',value:q('math')},
+        {label:'לקויות למידה',value:q('learningDisability'),detail:q('learningDisabilityDetail')}
+      ]},
+      {title:'שירות צבאי ותעסוקה',fields:[
+        {label:'שירות צבאי',value:q('militaryService')},
+        {label:'לימודים אקדמיים',value:q('academic'),detail:q('academicDetail')},
+        {label:'פסיכומטרי',value:q('psychometric')}
+      ]}
+    ];
+    return Utils.exportQuestionnaireAsWord(c.name,sections,q('grade'),q('result'),q('notes'));
   },
 
   // ===== Helper: build docx for candidate =====
