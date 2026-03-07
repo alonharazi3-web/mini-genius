@@ -196,10 +196,8 @@ const Stages={
     if(stageId===6){
       html+='<div class="form-group"><label class="form-label">שם מנהל מצטרף</label>'
       +'<input class="form-input" value="'+Utils.escHtml(c.stage6_managerName||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerName\',this.value)" placeholder="שם מנהל"></div>';
-      // FIX #9 v2.5: share via WhatsApp contact picker instead of typing manager phone
-      if(c.stage6_date){
-        html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendManagerReminder(\''+c.id+'\')">📱 שלח תזכורת למנהל (בחר איש קשר)</button>';
-      }
+      // v2.6 FIX #9: Always show button — user enters date/name first, then sends
+      html+='<button class="btn btn-wa btn-sm" onclick="Stages.sendManagerReminder(\''+c.id+'\')">📱 שלח תזכורת למנהל (בחר איש קשר)</button>';
     }
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage'+stageId+'_done\',this)">'
     +'<div class="cb-box '+(c['stage'+stageId+'_done']?'checked':'')+'">✓</div>'
@@ -221,12 +219,16 @@ const Stages={
     Utils.openWhatsApp(c.phone,msg);
   },
 
-  // FIX #9 v2.5: share message, user picks WhatsApp contact
+  // v2.6 FIX #9: flush dirty to get latest form values, then share
   async sendManagerReminder(id){
+    await App.flushDirty();
     var c=await DB.getCandidate(id);if(!c)return;
     var managerName=c.stage6_managerName||'מנהל';
-    var msg='שלום '+managerName+', תזכורת לראיון מתקדם עם '+c.name
-    +' בתאריך '+(c.stage6_date||'')+' בשעה '+(c.stage6_time||'');
+    var date=c.stage6_date||'';
+    var time=c.stage6_time||'';
+    var msg='שלום '+managerName+', תזכורת לראיון מתקדם עם '+c.name;
+    if(date)msg+=' בתאריך '+date;
+    if(time)msg+=' בשעה '+time;
     Utils.shareWhatsApp(msg);
   },
 

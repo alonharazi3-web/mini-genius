@@ -142,52 +142,30 @@ const Admin={
     Utils.toast('מחזור נמחק','success');this.render();
   },
   async exportData(){
-    // FIX #2 v2.5: comprehensive export with all data
-    var settings=await DB.getAllSettings();
+    // v2.6 FIX #2: Export ALL data from ALL stores correctly
+    // Settings: export as raw DB rows {key, value, updatedAt} — NOT the flat map
+    var settingsRows=await DB.getAll('settings');
+    var candidates=await DB.getAllCandidates();
+    var jobs=await DB.getAllJobs();
+    var tasks=await DB.getAllTasks();
+    var daylog=await DB.getAll('daylog');
+    var files=await DB.getAll('files');
+    _dbg('Export: '+candidates.length+' candidates, '+settingsRows.length+' settings, '+jobs.length+' jobs');
+
     var data={
-      version:'2.5',
+      version:'2.6',
       exportDate:new Date().toISOString(),
-      // All stores
-      candidates:await DB.getAllCandidates(),
-      jobs:await DB.getAllJobs(),
-      tasks:await DB.getAllTasks(),
-      daylog:await DB.getAll('daylog'),
-      files:await DB.getAll('files'),
-      // Settings as-is (includes everything)
-      settings:settings,
-      // Human-readable summary
-      summary:{
-        recruiters:JSON.parse(settings.recruiters||'[]'),
-        leadRecruiter:settings.leadRecruiter||'',
-        email:settings.email||'',
-        examCenterPhone:settings.examCenterPhone||'',
-        notifCenterPhone:settings.notifCenterPhone||'',
-        notifCenterMsg:settings.notifCenterMsg||'',
-        factorySecretaryPhone:settings.factorySecretaryPhone||'',
-        factorySecretaryMsg:settings.factorySecretaryMsg||'',
-        transcriptionService:settings.transcriptionService||'',
-        whatsappMessages:{
-          stage1:settings.msgStage1||'',
-          stage2:settings.msgStage2||'',
-          stage3Coord:settings.msgStage3Coord||'',
-          stage3Results:settings.msgStage3Results||'',
-          stageInvite:settings.msgStageInvite||'',
-          unfreeze:settings.msgUnfreeze||''
-        },
-        alertDays:{
-          stage1:settings.alertDaysStage1||'3',
-          stage2:settings.alertDaysStage2||'3',
-          stage3:settings.alertDaysStage3Exam||'4',
-          stage4:settings.alertDaysStage4||'5',
-          stage5:settings.alertDaysStage5||'5',
-          stage6:settings.alertDaysStage6||'5',
-          stage7:settings.alertDaysStage7||'5'
-        }
-      }
+      candidates:candidates,
+      jobs:jobs,
+      tasks:tasks,
+      daylog:daylog,
+      files:files,
+      // Raw settings rows — each is {key:'xxx', value:'yyy', updatedAt:'...'}
+      settingsRows:settingsRows
     };
     var json=JSON.stringify(data,null,2);
     var filename='minigenius_backup_'+Utils.today()+'.json';
-    Utils.writeToCacheAndShare(filename,json,'application/json','Mini Genius גיבוי');
+    Utils.writeToCacheAndShare(filename,json,'application/json','Mini Genius גיבוי — '+candidates.length+' מועמדים');
   },
   importData(){Utils.id('importFile')?.click()},
   async processImport(input){
@@ -196,15 +174,41 @@ const Admin={
     reader.onload=async function(e){
       try{
         var data=JSON.parse(e.target.result);
-        if(data.candidates){for(var i=0;i<data.candidates.length;i++){await DB.put('candidates',data.candidates[i]);}}
-        if(data.jobs){for(var i=0;i<data.jobs.length;i++){await DB.put('jobs',data.jobs[i]);}}
-        if(data.tasks){for(var i=0;i<data.tasks.length;i++){await DB.put('tasks',data.tasks[i]);}}
-        if(data.daylog){for(var i=0;i<data.daylog.length;i++){await DB.put('daylog',data.daylog[i]);}}
-        if(data.files){for(var i=0;i<data.files.length;i++){await DB.put('files',data.files[i]);}}
-        if(data.settings){var s=data.settings;for(var k in s){if(s[k]&&s[k].key)await DB.put('settings',s[k]);}}
+        var counts={candidates:0,jobs:0,tasks:0,daylog:0,files:0,settings:0};
+        if(data.candidates){for(var i=0;i<data.candidates.length;i++){await DB.put('candidates',data.candidates[i]);counts.candidates++}}
+        if(data.jobs){for(var i=0;i<data.jobs.length;i++){await DB.put('jobs',data.jobs[i]);counts.jobs++}}
+        if(data.tasks){for(var i=0;i<data.tasks.length;i++){await DB.put('tasks',data.tasks[i]);counts.tasks++}}
+        if(data.daylog){for(var i=0;i<data.daylog.length;i++){await DB.put('daylog',data.daylog[i]);counts.daylog++}}
+        if(data.files){for(var i=0;i<data.files.length;i++){await DB.put('files',data.files[i]);counts.files++}}
+        // v2.6: Import settings — handle BOTH raw rows format and old flat format
+        if(data.settingsRows){
+          // New format: array of {key, value, updatedAt}
+          for(var i=0;i<data.settingsRows.length;i++){
+            var row=data.settingsRows[i];
+            if(row&&row.key)await DB.put('settings',row);
+            counts.settings++;
+          }
+        }else if(data.settings){
+          // Old format: flat {key: value} OR array of {key, value}
+          var s=data.settings;
+          if(Array.isArray(s)){
+            for(var i=0;i<s.length;i++){if(s[i]&&s[i].key)await DB.put('settings',s[i]);counts.settings++}
+          }else{
+            for(var k in s){
+              if(typeof s[k]==='object'&&s[k]!==null&&s[k].key){
+                await DB.put('settings',s[k]);
+              }else{
+                await DB.setSetting(k,s[k]);
+              }
+              counts.settings++;
+            }
+          }
+        }
         App.settings=await DB.getAllSettings();
-        Utils.toast('ייבוא הושלם!','success');Admin.render();
-      }catch(err){Utils.toast('שגיאה בייבוא','danger');_dbg('Import err:'+err);}
+        _dbg('Import done: '+JSON.stringify(counts));
+        Utils.toast('ייבוא הושלם! '+counts.candidates+' מועמדים, '+counts.settings+' הגדרות','success');
+        Admin.render();
+      }catch(err){Utils.toast('שגיאה בייבוא: '+err,'danger');_dbg('Import err:'+err);}
     };
     reader.readAsText(input.files[0]);
   }
