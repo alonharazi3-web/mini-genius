@@ -146,35 +146,39 @@ const DaySummary={
     Stages.showModal(html);
   },
 
-  // Preview a file
+  // Preview a file — VIEW it, don't export
   async previewFile(idx){
     var f=DaySummary._files[idx];
     if(!f)return;
     _dbg('Preview file: '+f.name);
 
     if(f.type==='html'){
-      // Write HTML to cache and open
-      if(window.cordova&&window.cordova.file){
-        var url=await DaySummary._writeToCache(f.name,f.content,f.mime);
-        if(url){
-          if(window.plugins&&window.plugins.intentShim){
-            plugins.intentShim.startActivity({
-              action:'android.intent.action.VIEW',url:url,type:'text/html',extras:{}
-            },function(){},function(){
-              // Fallback: share
-              Utils.shareViaPlugin('',' צפייה',[url]);
-            });
-          }else{Utils.shareViaPlugin('','צפייה',[url]);}
-        }
-      }else{
-        var blob=new Blob([f.content],{type:'text/html'});
-        window.open(URL.createObjectURL(blob),'_blank');
-      }
+      // Show HTML in a full-screen overlay
+      var overlay=document.createElement('div');
+      overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:300;background:#fff;';
+      overlay.innerHTML='<div style="position:sticky;top:0;background:#1B2A4A;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;z-index:1;">'
+      +'<button onclick="this.closest(\'div[style]\').remove()" style="background:none;border:none;color:#fff;font-size:1.3rem;cursor:pointer;">✕</button>'
+      +'<span style="font-weight:700;">'+Utils.escHtml(f.label)+'</span></div>'
+      +'<iframe style="width:100%;height:calc(100% - 48px);border:none;" srcdoc="'+f.content.replace(/"/g,'&quot;')+'"></iframe>';
+      document.body.appendChild(overlay);
     }else if(f.type==='docx'){
-      // Write docx to cache and share/open
+      // Write to cache and open with external viewer
       if(window.cordova&&window.cordova.file){
         var url=await DaySummary._writeBlobToCache(f.name,f.blob);
-        if(url){Utils.shareViaPlugin('','צפייה — '+f.label,[url]);}
+        if(url&&window.plugins&&window.plugins.intentShim){
+          plugins.intentShim.startActivity({
+            action:'android.intent.action.VIEW',
+            url:url,
+            type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            extras:{}
+          },function(){_dbg('Docx opened');},
+          function(){
+            // No Word viewer — share instead
+            Utils.shareViaPlugin('','צפייה — '+f.label,[url]);
+          });
+        }else if(url){
+          Utils.shareViaPlugin('','צפייה — '+f.label,[url]);
+        }
       }else{
         var u=URL.createObjectURL(f.blob);
         var a=document.createElement('a');a.href=u;a.download=f.name;
@@ -183,7 +187,7 @@ const DaySummary={
     }
   },
 
-  // Send selected files via email
+  // Send selected files via email — auto-fill update email
   async sendSelected(){
     var email=App.settings.email||'';
     var selected=[];
@@ -216,13 +220,36 @@ const DaySummary={
       var body='דוח יומי — '+selected.length+' קבצים מצורפים\n\nMini Genius v2.8';
 
       if(fileUrls.length&&window.plugins&&window.plugins.socialsharing){
-        window.plugins.socialsharing.shareWithOptions({
+        // v2.8: Auto-fill "to" email from settings
+        var opts={
           message:body,
           subject:subject,
           files:fileUrls,
           chooserTitle:'שלח דוח יומי'
-        },function(){Utils.toast('נשלח!','success');},
-        function(e){_dbg('Share err: '+e);Utils.toast('שגיאה בשליחה','danger');});
+        };
+        if(email){
+          // Use shareViaEmail for auto-filled recipient
+          window.plugins.socialsharing.shareViaEmail(
+            body,
+            subject,
+            [email],  // to
+            null,      // cc
+            null,      // bcc
+            fileUrls,  // attachments
+            function(){Utils.toast('נשלח!','success');},
+            function(e){
+              _dbg('Email share err: '+e+' — trying generic share');
+              // Fallback to generic share
+              window.plugins.socialsharing.shareWithOptions(opts,
+                function(){Utils.toast('נשלח!','success');},
+                function(e2){_dbg('Share err: '+e2);Utils.toast('שגיאה בשליחה','danger');});
+            }
+          );
+        }else{
+          window.plugins.socialsharing.shareWithOptions(opts,
+            function(){Utils.toast('נשלח!','success');},
+            function(e){_dbg('Share err: '+e);Utils.toast('שגיאה בשליחה','danger');});
+        }
       }else if(email){
         Utils.sendEmail(email,subject,body);
       }else{

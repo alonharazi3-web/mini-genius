@@ -21,15 +21,15 @@ const Tasks={
     html+='</div>';page.innerHTML=html;
   },
 
-  // v2.7 #5: Render tasks inline at bottom of stage view
+  // v2.8: Show ALL tasks from all stages inline
   async renderInline(stageId){
-    var tasks=await Tasks.buildTaskList(stageId);
-    if(!tasks.length)return;
+    var allTasks=await Tasks.getAllTasksSorted();
+    if(!allTasks.length)return;
     var container=Utils.id('mainContent');
-    if(!container)return;
-    var html='<div style="padding:0 14px 20px;"><div class="section-title" style="margin:16px 0 0;">✅ משימות ('+tasks.length+')'
+    if(!container||!container.querySelector('.page'))return;
+    var html='<div style="padding:0 14px 20px;"><div class="section-title" style="margin:16px 0 0;">✅ משימות ('+allTasks.length+')'
     +'<button class="btn btn-primary btn-sm" style="float:left;margin-top:-4px;" onclick="Tasks.addManual()">➕</button></div>'
-    +Tasks._renderTaskItems(tasks,stageId)+'</div>';
+    +Tasks._renderTaskItems(allTasks,stageId)+'</div>';
     container.querySelector('.page').insertAdjacentHTML('beforeend',html);
   },
 
