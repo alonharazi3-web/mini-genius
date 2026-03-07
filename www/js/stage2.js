@@ -54,10 +54,8 @@ var Stage2={
 
     html+='<div style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;">'
     +'<button class="btn btn-primary" style="flex:1;" onclick="Stage2.openQuestionnaire(\''+c.id+'\')">\u{1f4dd} \u05e9\u05d0\u05dc\u05d5\u05df</button>';
-    // Export buttons appear after questionnaire is filled
     if(c.stage2_q_grade){
-      html+='<button class="btn btn-outline btn-sm" onclick="Stage2.exportWord(\''+c.id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 Word</button>';
-      html+='<button class="btn btn-outline btn-sm" onclick="Stage2.exportDocx(\''+c.id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 .doc</button>';
+      html+='<button class="btn btn-outline btn-sm" onclick="Stage2.exportDocx(\''+c.id+'\')">\u{1f4c4} \u05d9\u05d9\u05e6\u05d5\u05d0 Word</button>';
     }
     html+='</div>';
     // Show questionnaire summary if filled
@@ -164,29 +162,87 @@ var Stage2={
     Utils.exportQuestionnaireAsWord(c.name,sections,q('grade'),q('result'),q('notes'));
   },
 
-  // FIX #5: DOCX export (Word-compatible HTML saved as .doc)
+  // v2.7: Real .docx export using DocxBuilder
   async exportDocx(id){
     var c=await DB.getCandidate(id);
     var q=function(f){return c['stage2_q_'+f]||'';};
     var sections=[
       {title:'פרטים אישיים',fields:[
-        {label:'גיל',value:q('age')},{label:'מצב משפחתי',value:q('marital')},
-        {label:'רשיון נהיגה',value:q('license')},{label:'מוכנות לרילוקציה',value:q('relocation')}
+        {label:'גיל',value:q('age')},
+        {label:'מצב משפחתי',value:q('marital')},
+        {label:'שוחח עם בן/בת זוג',value:q('partnerTalk')},
+        {label:'מספר ילדים',value:q('children')},
+        {label:'מוכנות לרילוקציה',value:q('relocation')},
+        {label:'משרה מלאה',value:q('fullTime')},
+        {label:'רשיון נהיגה',value:q('license')},
+        {label:'רשיון C',value:q('licenseC')}
       ]},
       {title:'מצב רפואי',fields:[
-        {label:'מצב רפואי',value:q('medical'),detail:q('medicalDetail')},
-        {label:'כושר גופני',value:q('fitness')}
+        {label:'מצב רפואי (ניתוחים/תרופות/פציעות)',value:q('medical'),detail:q('medicalDetail')},
+        {label:'כושר גופני',value:q('fitness')},
+        {label:'פציעת צה"ל',value:q('idfInjury')},
+        {label:'בעיות ראייה/עיוורון',value:q('vision'),detail:q('visionDetail')},
+        {label:'פרופיל צבאי',value:q('idfProfile')},
+        {label:'סממנים ייחודיים',value:q('tattoos')},
+        {label:'זמינות לתהליך',value:q('availability'),detail:q('availabilityDetail')}
       ]},
-      {title:'רקע והשכלה',fields:[
-        {label:'אנגלית',value:q('english')},{label:'מתמטיקה',value:q('math')},
-        {label:'בגרות',value:q('bagrut'),detail:q('bagrutDetail')}
+      {title:'רקע אישי והשכלה',fields:[
+        {label:'עיסוק נוכחי',value:q('currentJob')},
+        {label:'סיפור חיים',value:q('lifeStory')},
+        {label:'בגרות מלאה',value:q('bagrut'),detail:q('bagrutDetail')},
+        {label:'מקצועות מוגברים',value:q('enhancedSubjects')},
+        {label:'אנגלית (0-7)',value:q('english')},
+        {label:'מתמטיקה (0-5)',value:q('math')},
+        {label:'אבחון דידקטי/לקויות למידה',value:q('learningDisability'),detail:q('learningDisabilityDetail')},
+        {label:'מכינה/ישיבה/שנת שירות',value:q('mechina'),detail:q('mechinaDetail')}
       ]},
-      {title:'שירות צבאי',fields:[
+      {title:'שירות צבאי ותעסוקה',fields:[
         {label:'שירות צבאי',value:q('militaryService')},
-        {label:'פסיכומטרי',value:q('psychometric')}
+        {label:'לימודים אקדמאיים',value:q('academic'),detail:q('academicDetail')},
+        {label:'פסיכומטרי',value:q('psychometric')},
+        {label:'לאחר צבא/תעסוקה',value:q('postArmy')}
+      ]},
+      {title:'שאלות אינטימיות',fields:[
+        {label:'הסכמה לענות',value:q('intimateConsent')},
+        {label:'נפשי',value:q('intimateMental'),detail:q('intimateMentalDetail')},
+        {label:'סמים',value:q('intimateDrugs'),detail:q('intimateDrugsDetail')},
+        {label:'פלילי/אזרחי',value:q('intimateCriminal'),detail:q('intimateCriminalDetail')},
+        {label:'משמעת/מצ"ח בצבא',value:q('intimateMilitary'),detail:q('intimateMilitaryDetail')}
       ]}
     ];
-    Utils.exportQuestionnaireAsDocx(c.name,sections,q('grade'),q('result'),q('notes'));
+    try{
+      var blob=DocxBuilder.build(c.name,sections,q('grade'),q('result'),q('notes'));
+      var fn='questionnaire_'+c.name.replace(/\s/g,'_')+'_'+Utils.today()+'.docx';
+      if(window.cordova&&window.cordova.file){
+        // Write blob to cache and share
+        var reader=new FileReader();
+        reader.onload=function(){
+          var buf=new Uint8Array(reader.result);
+          window.resolveLocalFileSystemURL(cordova.file.cacheDirectory,function(dir){
+            dir.getFile(fn,{create:true,exclusive:false},function(fe){
+              fe.createWriter(function(w){
+                w.onwriteend=function(){
+                  _dbg('DOCX written: '+fe.nativeURL);
+                  Utils.shareViaPlugin('','שאלון טלפוני — '+c.name,[fe.nativeURL]);
+                };
+                w.write(new Blob([buf]));
+              });
+            });
+          });
+        };
+        reader.readAsArrayBuffer(blob);
+      }else{
+        // Browser fallback
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a');a.href=url;a.download=fn;
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        Utils.toast('קובץ Word נוצר','success');
+      }
+    }catch(e){
+      _dbg('DOCX export err: '+e);
+      Utils.toast('שגיאה ביצירת קובץ Word','danger');
+    }
   },
 
   // ===== QUESTIONNAIRE =====
@@ -217,7 +273,7 @@ var Stage2={
 
     // ====== SECTION 3: Medical ======
     html+='<div class="section-title">\u{1f3e5} \u05de\u05e6\u05d1 \u05e8\u05e4\u05d5\u05d0\u05d9</div><div class="card">';
-    html+=Stage2._yesNoConditional(id,'medical','\u05de\u05e6\u05d1 \u05e8\u05e4\u05d5\u05d0\u05d9 (\u05e0\u05d9\u05ea\u05d5\u05d7\u05d9\u05dd/\u05e4\u05e6\u05d9\u05e2\u05d5\u05ea/\u05ea\u05e8\u05d5\u05e4\u05d5\u05ea \u05e7\u05d1\u05d5\u05e2\u05d5\u05ea) \u2014 \u05ea\u05e7\u05d9\u05df?',q('medical'),q('medicalDetail'));
+    html+=Stage2._yesNoConditionalNo(id,'medical','\u05de\u05e6\u05d1 \u05e8\u05e4\u05d5\u05d0\u05d9 (\u05e0\u05d9\u05ea\u05d5\u05d7\u05d9\u05dd/\u05e4\u05e6\u05d9\u05e2\u05d5\u05ea/\u05ea\u05e8\u05d5\u05e4\u05d5\u05ea \u05e7\u05d1\u05d5\u05e2\u05d5\u05ea) \u2014 \u05ea\u05e7\u05d9\u05df?',q('medical'),q('medicalDetail'));
     html+=Stage2._yesNo(id,'fitness','\u05e2\u05d5\u05e1\u05e7/\u05ea \u05d1\u05db\u05d5\u05e9\u05e8 \u05d1\u05d0\u05d5\u05e4\u05df \u05ea\u05d3\u05d9\u05e8',q('fitness'));
     html+=Stage2._yesNoConditional(id,'idfInjury','\u05e4\u05e6\u05d9\u05e2\u05ea \u05e6\u05d4"\u05dc / \u05e0\u05db\u05d4 \u05e6\u05d4"\u05dc / \u05d5\u05e2\u05d3\u05d5\u05ea \u05e8\u05e4\u05d5\u05d0\u05d9\u05d5\u05ea',q('idfInjury'),q('idfInjuryDetail'));
     html+=Stage2._yesNoConditional(id,'vision','\u05d1\u05e2\u05d9\u05d5\u05ea \u05e8\u05d0\u05d9\u05d9\u05d4 / \u05e0\u05d9\u05ea\u05d5\u05d7 \u05dc\u05d9\u05d9\u05d6\u05e8 / \u05e2\u05d9\u05d5\u05d5\u05e8\u05d5\u05df \u05e6\u05d1\u05e2\u05d9\u05dd',q('vision'),q('visionDetail'));
@@ -230,7 +286,7 @@ var Stage2={
     html+='<div class="section-title">\u{1f4dd} \u05e8\u05e7\u05e2 \u05d0\u05d9\u05e9\u05d9 \u05d5\u05d4\u05e9\u05db\u05dc\u05d4</div><div class="card">';
     html+=Stage2._textarea(id,'currentJob','\u05de\u05d4 \u05e2\u05d5\u05e9\u05d4 \u05d4\u05d9\u05d5\u05dd',q('currentJob'));
     html+=Stage2._textarea(id,'lifeStory','\u05e1\u05e4\u05e8/\u05d9 \u05e7\u05e6\u05ea \u05e2\u05dc \u05e7\u05d5\u05e8\u05d5\u05ea \u05d7\u05d9\u05d9\u05da \u2014 \u05de\u05e9\u05e4\u05d7\u05d4, \u05de\u05d2\u05d5\u05e8\u05d9\u05dd, \u05d9\u05dc\u05d3\u05d5\u05ea, \u05ea\u05d7\u05d1\u05d9\u05d1\u05d9\u05dd',q('lifeStory'));
-    html+=Stage2._yesNoConditional(id,'bagrut','\u05d1\u05d2\u05e8\u05d5\u05ea \u05de\u05dc\u05d0\u05d4',q('bagrut'),q('bagrutDetail'));
+    html+=Stage2._yesNoConditionalNo(id,'bagrut','\u05d1\u05d2\u05e8\u05d5\u05ea \u05de\u05dc\u05d0\u05d4',q('bagrut'),q('bagrutDetail'));
     html+=Stage2._field(id,'enhancedSubjects','\u05de\u05e7\u05e6\u05d5\u05e2\u05d5\u05ea \u05de\u05d5\u05d2\u05d1\u05e8\u05d9\u05dd','text',q('enhancedSubjects'));
     html+=Stage2._numButtons(id,'english','\u05d0\u05e0\u05d2\u05dc\u05d9\u05ea (0-7)',[0,1,2,3,4,5,6,7],q('english'));
     html+=Stage2._numButtons(id,'math','\u05de\u05ea\u05de\u05d8\u05d9\u05e7\u05d4 (0-5)',[0,1,2,3,4,5],q('math'));
@@ -697,6 +753,17 @@ var Stage2={
     +'<div class="form-group"><label class="form-label">\u05e4\u05e8\u05d8</label>'
     +'<textarea class="form-textarea" rows="2" onchange="Stage2._save(\''+id+'\',\''+key+'Detail\',this.value)">'+Utils.escHtml(detailVal||'')+'</textarea></div></div></div>';
   },
+  // v2.7: Reverse conditional — opens detail on "לא" (for medical, bagrut)
+  _yesNoConditionalNo:function(id,key,label,val,detailVal){
+    var show=(val==='\u05dc\u05d0');
+    return '<div class="form-group"><label class="form-label">'+label+'</label><div class="radio-group">'
+    +'<div class="radio-btn '+(val==='\u05db\u05df'?'active-success':'')+'" onclick="Stage2._saveRadioConditionalNo(\''+id+'\',\''+key+'\',\'\u05db\u05df\',this)">\u05db\u05df</div>'
+    +'<div class="radio-btn '+(val==='\u05dc\u05d0'?'active-danger':'')+'" onclick="Stage2._saveRadioConditionalNo(\''+id+'\',\''+key+'\',\'\u05dc\u05d0\',this)">\u05dc\u05d0</div>'
+    +'</div>'
+    +'<div class="conditional '+(show?'show':'')+'" id="cond_'+key+'">'
+    +'<div class="form-group"><label class="form-label">\u05e4\u05e8\u05d8</label>'
+    +'<textarea class="form-textarea" rows="2" onchange="Stage2._save(\''+id+'\',\''+key+'Detail\',this.value)">'+Utils.escHtml(detailVal||'')+'</textarea></div></div></div>';
+  },
   _numButtons:function(id,key,label,nums,val){
     var html='<div class="form-group"><label class="form-label">'+label+'</label><div class="scale-group">';
     nums.forEach(function(n){
@@ -721,6 +788,14 @@ var Stage2={
     Stage2._save(id,key,val);
     var cond=Utils.id('cond_'+key);
     if(cond){if(val==='\u05db\u05df')cond.classList.add('show');else cond.classList.remove('show');}
+  },
+  // v2.7: Reverse — shows detail on "לא"
+  _saveRadioConditionalNo:function(id,key,val,el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.className='radio-btn';});
+    el.classList.add('radio-btn');el.classList.add(val==='\u05db\u05df'?'active-success':'active-danger');
+    Stage2._save(id,key,val);
+    var cond=Utils.id('cond_'+key);
+    if(cond){if(val==='\u05dc\u05d0')cond.classList.add('show');else cond.classList.remove('show');}
   },
   _saveGrade:function(id,val,el){
     el.parentElement.querySelectorAll('.scale-btn').forEach(function(b){b.classList.remove('active');b.style='';});

@@ -21,6 +21,8 @@ const App={
       this.navigate('stage',1);
     }
     Tasks.carryOverTasks();
+    // v2.7 #9: Show opening screen after splash
+    setTimeout(function(){App.showOpeningScreen()},3000);
 
     // FIX #4: Auto-save every 10 seconds (backup) + immediate on pause/visibility
     setInterval(function(){App.flushDirty()},10000);
@@ -187,6 +189,8 @@ const App={
       html+='</div>';
     }
     html+='</div>';page.innerHTML=html;this.updateBadges();
+    // v2.7 #5: Show tasks at bottom of stage list
+    Tasks.renderInline(stageId);
   },
 
   filterList(q){
@@ -225,6 +229,40 @@ const App={
     document.addEventListener('click',function(e){
       if(!fab.contains(e.target)&&!menu.contains(e.target)){fab.classList.remove('open');menu.classList.remove('show');}
     });
+  },
+
+  // v2.7 #9: Opening screen with greeting + task status
+  async showOpeningScreen(){
+    try{
+      var recs=JSON.parse(this.settings.recruiters||'[]');
+      var lead=this.settings.leadRecruiter||recs[0]||'מגייס/ת';
+      var hour=new Date().getHours();
+      var greeting=hour<12?'בוקר טוב':'אחר הצהריים טובים';
+      if(hour>=17)greeting='ערב טוב';
+
+      var allTasks=await Tasks.getAllTasksSorted();
+      var urgent=allTasks.filter(function(t){return t.urgent&&!t.done});
+      var pending=allTasks.filter(function(t){return !t.done&&!t.urgent});
+      var total=urgent.length+pending.length;
+
+      var html='<div class="modal-title">'+greeting+', '+Utils.escHtml(lead)+'! 👋</div>';
+      if(!total){
+        html+='<div class="info-box" style="text-align:center;">🎉 אין משימות ליום — יום מצוין!</div>';
+      }else{
+        html+='<div style="text-align:center;margin-bottom:12px;font-size:.92rem;color:var(--text-light);">'
+        +total+' משימות ליום'+(urgent.length?' ('+urgent.length+' דחופות)':'')+'</div>';
+        // Show urgent tasks first, then pending (max 8)
+        var shown=urgent.concat(pending).slice(0,8);
+        shown.forEach(function(t){
+          var cls=t.urgent?'border-right:3px solid var(--danger);':'';
+          html+='<div style="padding:8px 10px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:.88rem;'+cls+'">'
+          +t.icon+' '+Utils.escHtml(t.text)+'</div>';
+        });
+        if(allTasks.length>8)html+='<div style="text-align:center;color:var(--text-light);font-size:.82rem;margin-top:6px;">+'+(allTasks.length-8)+' נוספות</div>';
+      }
+      html+='<button class="btn btn-primary" style="width:100%;margin-top:16px;" onclick="Stages.closeModal()">בואו נתחיל! 💪</button>';
+      Stages.showModal(html);
+    }catch(e){_dbg('Opening screen err: '+e);}
   }
 };
 

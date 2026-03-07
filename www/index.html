@@ -18,7 +18,7 @@
 <div id="debugLog" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,.85);
 color:#0f0;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;padding:4px 8px;
 direction:ltr;text-align:left;display:none;">
-<div style="display:flex;justify-content:space-between;"><span>Debug Log v2.6</span>
+<div style="display:flex;justify-content:space-between;"><span>Debug Log v2.7</span>
 <span onclick="this.parentElement.parentElement.style.display='none'" style="cursor:pointer;color:red;font-size:14px;">X</span></div>
 <div id="debugLines"></div>
 </div>
@@ -28,7 +28,7 @@ direction:ltr;text-align:left;display:none;">
 <img src="img/icon.png" style="width:36px;height:36px;border-radius:8px;">
 <div>
 <h1>Mini Genius</h1>
-<div class="header-sub" id="appVersion">v2.6</div>
+<div class="header-sub" id="appVersion">v2.7</div>
 </div>
 <button class="header-btn" onclick="App.navigate('daysummary')" title="סיכום יום">📋</button>
 <button class="header-btn" onclick="App.navigate('admin')" title="ניהול">⚙️</button>
@@ -81,6 +81,7 @@ document.addEventListener('click',function(e){
 _dbg('Page loaded, UA: '+navigator.userAgent.substr(0,60));
 </script>
 <script src="js/db.js" onload="_dbg('db.js OK')"></script>
+<script src="js/docx-builder.js" onload="_dbg('docx-builder.js OK')"></script>
 <script src="js/utils.js" onload="_dbg('utils.js OK')"></script>
 <script src="js/stages.js" onload="_dbg('stages.js OK')"></script>
 <script src="js/stage1.js" onload="_dbg('stage1.js OK')"></script>
