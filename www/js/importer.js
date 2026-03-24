@@ -106,17 +106,31 @@ var Importer={
     });
     html+='</div>';
 
-    // Stage date columns
-    html+='<div class="card" style="margin:10px 14px;"><div style="font-weight:700;margin-bottom:10px;">עמודות תחנות (תאריך = עבר תחנה)</div>';
+    // Stage columns — date/result + grade
+    html+='<div class="card" style="margin:10px 14px;"><div style="font-weight:700;margin-bottom:10px;">עמודות תחנות</div>'
+    +'<div class="info-box" style="margin-bottom:10px;">לכל תחנה ניתן לשייך עמודת תאריך/סטטוס ועמודת ציון.<br>'
+    +'המערכת מזהה אוטומטית: תאריך, עבר/לא עבר, מספר 1-7.</div>';
     stageFields.forEach(function(f){
-      html+='<div class="form-group"><label class="form-label">'+f.label+'</label>'
-      +'<select class="form-select" id="map_'+f.key+'">'
+      html+='<div style="padding:8px 0;border-bottom:1px solid var(--border);">'
+      +'<div style="font-weight:600;font-size:.88rem;margin-bottom:6px;">'+f.label+'</div>';
+      // Date/result column
+      html+='<div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:.8rem;">עמודת תאריך / סטטוס</label>'
+      +'<select class="form-select" id="map_'+f.key+'" style="font-size:.85rem;">'
       +'<option value="">— לא ממופה —</option>';
       headers.forEach(function(h,idx){
         var sel=(saved&&saved[f.key]===idx)?' selected':'';
-        html+='<option value="'+idx+'"'+sel+'>'+Utils.escHtml(h)+' (עמודה '+(idx+1)+')</option>';
+        html+='<option value="'+idx+'"'+sel+'>'+Utils.escHtml(h)+' (#'+(idx+1)+')</option>';
       });
       html+='</select></div>';
+      // Grade column
+      html+='<div class="form-group" style="margin-bottom:0;"><label class="form-label" style="font-size:.8rem;">עמודת ציון (1-7)</label>'
+      +'<select class="form-select" id="map_stage'+f.stageId+'_grade" style="font-size:.85rem;">'
+      +'<option value="">— לא ממופה —</option>';
+      headers.forEach(function(h,idx){
+        var sel=(saved&&saved['stage'+f.stageId+'_grade']===idx)?' selected':'';
+        html+='<option value="'+idx+'"'+sel+'>'+Utils.escHtml(h)+' (#'+(idx+1)+')</option>';
+      });
+      html+='</select></div></div>';
     });
     html+='</div>';
 
@@ -144,7 +158,10 @@ var Importer={
   async processMapping(){
     var mapping={};
     var allFields=['name','phone','notes','referrer','recruiter'];
-    Utils.STAGES.forEach(function(s){allFields.push('stage'+s.id+'_date');});
+    Utils.STAGES.forEach(function(s){
+      allFields.push('stage'+s.id+'_date');
+      allFields.push('stage'+s.id+'_grade');
+    });
     allFields.forEach(function(key){
       var el=Utils.id('map_'+key);
       if(el&&el.value!=='')mapping[key]=parseInt(el.value);
@@ -153,17 +170,14 @@ var Importer={
       Utils.toast('שם וטלפון הם שדות חובה','danger');return;
     }
     Importer._mapping=mapping;
-    // Save mapping for future
     DB.setSetting('megaGeniusMapping',JSON.stringify(mapping));
     App.settings.megaGeniusMapping=JSON.stringify(mapping);
 
-    // Load previous import snapshot
     var prevSnapshotRaw=await DB.getSetting('_importSnapshot');
-    var prevSnapshot={};// phone → {stage, name, importedAt}
+    var prevSnapshot={};
     try{if(prevSnapshotRaw)prevSnapshot=JSON.parse(prevSnapshotRaw);}catch(e){}
     var prevCount=Object.keys(prevSnapshot).length;
 
-    // Build candidate objects
     Importer._candidates=[];
     var newCount=0,changedCount=0,unchangedCount=0;
     Importer._rows.forEach(function(row,idx){
@@ -175,41 +189,82 @@ var Importer={
         notes:mapping.notes!==undefined?(row[mapping.notes]||'').trim():'',
         referrer:mapping.referrer!==undefined?(row[mapping.referrer]||'').trim():'',
         recruiter:mapping.recruiter!==undefined?(row[mapping.recruiter]||'').trim():'',
-        _stageDates:{}
+        _stageDates:{},_stageDecisions:{},_stageGrades:{}
       };
       var highestStage=0;
       Utils.STAGES.forEach(function(s){
-        var key='stage'+s.id+'_date';
-        if(mapping[key]!==undefined){
-          var val=(row[mapping[key]]||'').trim();
-          if(val&&Importer._looksLikeDate(val)){
-            c._stageDates[s.id]=val;
-            if(s.id>highestStage)highestStage=s.id;
+        var dateKey='stage'+s.id+'_date';
+        var gradeKey='stage'+s.id+'_grade';
+        var stageCompleted=false;
+
+        // Parse date/status column
+        if(mapping[dateKey]!==undefined){
+          var val=(row[mapping[dateKey]]||'').trim();
+          if(val){
+            var parsed=Importer._parseStageCell(val);
+            if(parsed.date){c._stageDates[s.id]=parsed.date;stageCompleted=true;}
+            if(parsed.decision){c._stageDecisions[s.id]=parsed.decision;if(parsed.decision==='pass')stageCompleted=true;}
+            if(parsed.grade){c._stageGrades[s.id]=parsed.grade;stageCompleted=true;}
           }
         }
+        // Parse separate grade column
+        if(mapping[gradeKey]!==undefined){
+          var gVal=(row[mapping[gradeKey]]||'').trim();
+          if(gVal){
+            var gParsed=Importer._parseStageCell(gVal);
+            if(gParsed.grade)c._stageGrades[s.id]=gParsed.grade;
+            if(gParsed.decision&&!c._stageDecisions[s.id])c._stageDecisions[s.id]=gParsed.decision;
+            if(gParsed.grade||gParsed.decision)stageCompleted=true;
+          }
+        }
+        if(stageCompleted&&s.id>highestStage)highestStage=s.id;
       });
       c._highestStage=highestStage;
       c._targetStage=Math.min(highestStage+1,Utils.STAGES[Utils.STAGES.length-1].id);
       if(highestStage===0)c._targetStage=1;
 
-      // Smart detection: compare to previous import
       var cleanPhone=phone.replace(/\D/g,'');
       var prev=prevSnapshot[cleanPhone];
-      if(!prev){
-        c._importStatus='new';newCount++;
-      }else if(prev.stage!==c._targetStage||prev.name!==name){
-        c._importStatus='changed';changedCount++;
-      }else{
-        c._importStatus='unchanged';unchangedCount++;
-      }
+      if(!prev){c._importStatus='new';newCount++;}
+      else if(prev.stage!==c._targetStage||prev.name!==name){c._importStatus='changed';changedCount++;}
+      else{c._importStatus='unchanged';unchangedCount++;}
       Importer._candidates.push(c);
     });
 
-    _dbg('Import smart: '+newCount+' new, '+changedCount+' changed, '+unchangedCount+' unchanged (prev: '+prevCount+')');
+    _dbg('Import smart: '+newCount+' new, '+changedCount+' changed, '+unchangedCount+' unchanged');
     Importer._currentIdx=0;
-
-    // Show smart summary before review
     Importer._showSmartSummary(newCount,changedCount,unchangedCount,prevCount);
+  },
+
+  // ===== Parse cell value — detect date, pass/fail (Hebrew/English), grade 1-7 =====
+  _parseStageCell:function(val){
+    var result={date:null,decision:null,grade:null};
+    if(!val)return result;
+    val=val.trim();
+    // Check Hebrew/English pass/fail
+    if(/^(עבר|עברה|עבר\/ה|pass)$/i.test(val))result.decision='pass';
+    else if(/^(לא עבר|לא עברה|נכשל|נכשלה|fail)$/i.test(val))result.decision='fail';
+    // Check grade (standalone number 1-7)
+    var num=parseFloat(val);
+    if(!isNaN(num)&&num>=1&&num<=7&&num===Math.round(num)){
+      result.grade=num;
+      if(!result.decision)result.decision=num>=4?'pass':'fail';
+    }
+    // Check date
+    if(Importer._looksLikeDate(val)){
+      result.date=val;
+      if(!result.decision)result.decision='pass';
+    }
+    // Mixed content — extract parts
+    if(!result.date&&!result.decision&&!result.grade&&val.length>1){
+      var dateMatch=val.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/);
+      if(dateMatch){result.date=dateMatch[0];if(!result.decision)result.decision='pass';}
+      if(/עבר/.test(val)&&!/לא\s*עבר/.test(val))result.decision='pass';
+      if(/לא\s*עבר|נכשל/.test(val))result.decision='fail';
+      var numMatch=val.match(/\b([1-7])\b/);
+      if(numMatch)result.grade=parseInt(numMatch[1]);
+    }
+    return result;
   },
 
   // ===== Smart summary — let user choose import mode =====
@@ -259,11 +314,7 @@ var Importer={
             existing.stage=c._targetStage;existing.status='active';
             existing.stageEnteredAt=new Date().toISOString();
           }
-          for(var sid in c._stageDates){
-            if(!existing['stage'+sid+'_completedAt']){
-              existing['stage'+sid+'_completedAt']=c._stageDates[sid];
-              existing['stage'+sid+'_decision']='pass';
-            }
+          Importer._applyStageData(existing,c,true);if(false){
           }
           await DB.saveCandidate(existing);c._action='updated';
           DB.logAction('עדכון ייבוא',c.name+' (Mega Genius)');
@@ -274,7 +325,7 @@ var Importer={
           stage:c._targetStage,status:'active',priority:'medium',
           jobId:App.currentJob,stageEnteredAt:new Date().toISOString(),
           importedFrom:'MegaGenius',importedAt:new Date().toISOString()};
-        for(var sid in c._stageDates){
+        Importer._applyStageData(newC,c);if(false){
           newC['stage'+sid+'_completedAt']=c._stageDates[sid];
           newC['stage'+sid+'_decision']='pass';
         }
@@ -300,7 +351,7 @@ var Importer={
         stage:c._targetStage,status:'active',priority:'medium',
         jobId:App.currentJob,stageEnteredAt:new Date().toISOString(),
         importedFrom:'MegaGenius',importedAt:new Date().toISOString()};
-      for(var sid in c._stageDates){
+      Importer._applyStageData(newC,c);if(false){
         newC['stage'+sid+'_completedAt']=c._stageDates[sid];
         newC['stage'+sid+'_decision']='pass';
       }
@@ -310,6 +361,19 @@ var Importer={
     Importer._currentIdx=Importer._candidates.length;
     await Importer._saveSnapshot();
     Importer._showSummary();
+  },
+
+  // ===== Apply stage data from import candidate to DB candidate =====
+  _applyStageData:function(target,c,updateMode){
+    for(var sid in c._stageDates){
+      if(!updateMode||!target['stage'+sid+'_completedAt'])target['stage'+sid+'_completedAt']=c._stageDates[sid];
+    }
+    for(var sid in c._stageDecisions){
+      if(!updateMode||!target['stage'+sid+'_decision'])target['stage'+sid+'_decision']=c._stageDecisions[sid];
+    }
+    for(var sid in c._stageGrades){
+      if(!updateMode||!target['stage'+sid+'_grade'])target['stage'+sid+'_grade']=c._stageGrades[sid];
+    }
   },
 
   _looksLikeDate:function(s){
@@ -348,12 +412,19 @@ var Importer={
     if(c.recruiter)html+='<div class="card-meta">רכז: '+Utils.escHtml(c.recruiter)+'</div>';
     if(c.notes)html+='<div class="card-meta">הערות: '+Utils.escHtml(c.notes)+'</div>';
 
-    // Stage dates
-    if(Object.keys(c._stageDates).length){
+    // Stage dates, decisions, grades
+    var hasStageData=Object.keys(c._stageDates).length||Object.keys(c._stageDecisions).length||Object.keys(c._stageGrades).length;
+    if(hasStageData){
       html+='<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">';
       Utils.STAGES.forEach(function(s){
-        if(c._stageDates[s.id]){
-          html+='<div class="card-meta">✅ '+s.icon+' '+s.name+': '+Utils.escHtml(c._stageDates[s.id])+'</div>';
+        var date=c._stageDates[s.id];var decision=c._stageDecisions[s.id];var grade=c._stageGrades[s.id];
+        if(date||decision||grade){
+          var icon=decision==='fail'?'❌':'✅';
+          var parts=[s.icon+' '+s.name+':'];
+          if(date)parts.push(Utils.escHtml(date));
+          if(decision)parts.push(decision==='pass'?'עבר':'לא עבר');
+          if(grade)parts.push('ציון '+grade+'/7');
+          html+='<div class="card-meta">'+icon+' '+parts.join(' | ')+'</div>';
         }
       });
       html+='</div>';
@@ -404,7 +475,7 @@ var Importer={
         jobId:App.currentJob,stageEnteredAt:new Date().toISOString(),
         importedFrom:'MegaGenius',importedAt:new Date().toISOString()
       };
-      for(var sid in c._stageDates){
+      Importer._applyStageData(newC,c);if(false){
         newC['stage'+sid+'_completedAt']=c._stageDates[sid];
         newC['stage'+sid+'_decision']='pass';
       }
@@ -422,7 +493,7 @@ var Importer={
           existing.stage=c._targetStage;existing.status='active';
           existing.stageEnteredAt=new Date().toISOString();
         }
-        for(var sid in c._stageDates){
+        Importer._applyStageData(existing,c,true);if(false){
           if(!existing['stage'+sid+'_completedAt']){
             existing['stage'+sid+'_completedAt']=c._stageDates[sid];
             existing['stage'+sid+'_decision']='pass';
@@ -464,7 +535,7 @@ var Importer={
         jobId:App.currentJob,stageEnteredAt:new Date().toISOString(),
         importedFrom:'MegaGenius',importedAt:new Date().toISOString()
       };
-      for(var sid in c._stageDates){
+      Importer._applyStageData(newC,c);if(false){
         newC['stage'+sid+'_completedAt']=c._stageDates[sid];
         newC['stage'+sid+'_decision']='pass';
       }
