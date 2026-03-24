@@ -11,6 +11,8 @@ STAGES:[
 ],
 STATUSES:{active:'פעיל',pass:'עבר',fail:'לא עבר',hesitation:'התלבטות',stopped:'הופסק',accepted:'התקבל',frozen:'הקפאה'},
 STATUS_COLORS:{active:'#4A90D9',pass:'#2ECC71',fail:'#E74C3C',hesitation:'#F1C40F',stopped:'#95a5a6',accepted:'#2ecc71',frozen:'#9B59B6'},
+REC_ICONS:{recommended:'⭐',unit:'🥈',eitan:'🥇'},
+REC_LABELS:{recommended:'מומלצים',unit:'מומלצי יחידה',eitan:'מומלצי איתן'},
 getStage(id){return this.STAGES.find(function(s){return s.id===id})},
 getStageName(id){var s=this.getStage(id);return s?s.icon+' '+s.name:'שלב '+id;},
 formatDate(iso){if(!iso)return'';return new Date(iso).toLocaleDateString('he-IL')},

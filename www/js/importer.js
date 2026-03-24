@@ -77,7 +77,8 @@ var Importer={
       {key:'phone',label:'מספר טלפון',required:true},
       {key:'notes',label:'הערות',required:false},
       {key:'referrer',label:'ממליץ / מפנה',required:false},
-      {key:'recruiter',label:'רכז מטפל',required:false}
+      {key:'recruiter',label:'רכז מטפל',required:false},
+      {key:'recommendation',label:'סוג המלצה (מומלצים/יחידה/איתן)',required:false}
     ];
     var stageFields=[];
     Utils.STAGES.forEach(function(s){
@@ -189,6 +190,7 @@ var Importer={
         notes:mapping.notes!==undefined?(row[mapping.notes]||'').trim():'',
         referrer:mapping.referrer!==undefined?(row[mapping.referrer]||'').trim():'',
         recruiter:mapping.recruiter!==undefined?(row[mapping.recruiter]||'').trim():'',
+        recommendation:Importer._parseRecommendation(mapping.recommendation!==undefined?(row[mapping.recommendation]||'').trim():''),
         _stageDates:{},_stageDecisions:{},_stageGrades:{}
       };
       var highestStage=0;
@@ -374,6 +376,21 @@ var Importer={
     for(var sid in c._stageGrades){
       if(!updateMode||!target['stage'+sid+'_grade'])target['stage'+sid+'_grade']=c._stageGrades[sid];
     }
+    // Apply recommendation if present
+    if(c.recommendation&&(!updateMode||!target.recommendation)){
+      target.recommendation=c.recommendation;
+      target.recommendedAt=new Date().toISOString();
+    }
+  },
+
+  // Parse recommendation text → internal key
+  _parseRecommendation:function(val){
+    if(!val)return'';
+    val=val.trim();
+    if(/איתן|eitan|gold|זהב/i.test(val))return'eitan';
+    if(/יחידה|unit|silver|כסף/i.test(val))return'unit';
+    if(/מומלצ|recommend|star|כוכב/i.test(val))return'recommended';
+    return'';
   },
 
   _looksLikeDate:function(s){

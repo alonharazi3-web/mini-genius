@@ -182,7 +182,7 @@ const App={
         var days=Utils.workDaysSince(c.updatedAt);var delayed=days>=ad;
         html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'">'
         +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-        +'<span class="card-name">'+Utils.escHtml(c.name)+'</span>'
+        +'<span class="card-name">'+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
         +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
         +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
         +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
@@ -212,8 +212,9 @@ const App={
     var page=Utils.id('mainContent');
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+c.stage+')">←</button>'
-    +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+Utils.escHtml(c.name)+'</div>'
-    +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div></div>'
+    +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</div>'
+    +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)
+    +(c.recommendation?' | '+Utils.REC_LABELS[c.recommendation]:'')+'</div></div>'
     +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>';
     html+='<div style="display:flex;gap:6px;padding:0 14px;flex-wrap:wrap;">'
     +'<button class="btn btn-call btn-sm" onclick="Utils.openDialer(\''+c.phone+'\')">📞 התקשר</button>'
@@ -258,6 +259,14 @@ const App={
       html+='<option value="'+s.id+'"'+(s.id===c.stage?' selected':'')+'>'+s.icon+' '+s.name+'</option>';
     });
     html+='</select></div>';
+    // v3.0: Recommendation tag
+    var rec=c.recommendation||'';
+    html+='<div class="form-group"><label class="form-label">המלצה</label><div class="radio-group" id="editRec">'
+    +'<div class="radio-btn '+(rec===''?'active':'')+'" data-val="" onclick="App._editRec(this)">ללא</div>'
+    +'<div class="radio-btn '+(rec==='recommended'?'active':'')+'" data-val="recommended" onclick="App._editRec(this)">⭐ מומלצים</div>'
+    +'<div class="radio-btn '+(rec==='unit'?'active':'')+'" data-val="unit" onclick="App._editRec(this)">🥈 מומלצי יחידה</div>'
+    +'<div class="radio-btn '+(rec==='eitan'?'active':'')+'" data-val="eitan" onclick="App._editRec(this)">🥇 מומלצי איתן</div>'
+    +'</div></div>';
     html+='<div style="display:flex;gap:8px;margin-top:16px;">'
     +'<button class="btn btn-primary" style="flex:1;" onclick="App.saveEdit(\''+c.id+'\')">💾 שמור</button>'
     +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>'
@@ -266,6 +275,7 @@ const App={
     Stages.showModal(html);
   },
   _editPri(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
+  _editRec(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
   async saveEdit(id){
     var c=await DB.getCandidate(id);if(!c)return;
     c.name=Utils.id('editName')?.value?.trim()||c.name;
@@ -275,6 +285,10 @@ const App={
     c.recruiter=Utils.id('editRecruiter')?.value||c.recruiter;
     var priEl=document.querySelector('#editPriority .radio-btn.active');
     if(priEl)c.priority=priEl.dataset.val;
+    // v3.0: Save recommendation
+    var recEl=document.querySelector('#editRec .radio-btn.active');
+    if(recEl)c.recommendation=recEl.dataset.val||'';
+    if(c.recommendation&&!c.recommendedAt)c.recommendedAt=new Date().toISOString();
     var newStage=parseInt(Utils.id('editStage')?.value);
     if(newStage&&newStage!==c.stage){
       var oldStage=c.stage;
@@ -292,6 +306,90 @@ const App={
     }catch(e){_dbg('Delete files err: '+e);}
     DB.logAction('מחיקה',name);
     Stages.closeModal();Utils.toast(name+' נמחק','success');this.renderStageList(this.currentStage);
+  },
+
+  // v3.0: Recommendations report
+  async showRecommendationsReport(){
+    var all=await DB.getAllCandidates();
+    var recommended=all.filter(function(c){return c.recommendation&&c.recommendation!=='';});
+    // Group by type
+    var groups={eitan:[],unit:[],recommended:[]};
+    recommended.forEach(function(c){
+      if(groups[c.recommendation])groups[c.recommendation].push(c);
+    });
+
+    var page=Utils.id('mainContent');
+    var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
+    +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+App.currentStage+')">←</button>'
+    +'<div style="flex:1;font-size:1.15rem;font-weight:700;">⭐ דוח מומלצים</div>'
+    +'<button class="btn btn-outline btn-sm" onclick="App.exportRecommendationsReport()">📤 ייצוא</button></div>';
+
+    if(!recommended.length){
+      html+='<div class="empty-state"><div class="icon">⭐</div><div>אין מועמדים מומלצים</div></div>';
+    }else{
+      // KPIs
+      html+='<div class="kpi-row" style="margin:12px 14px;">'
+      +'<div class="kpi"><div class="kpi-value" style="color:#FFD700;">'+groups.eitan.length+'</div><div class="kpi-label">🥇 מומלצי איתן</div></div>'
+      +'<div class="kpi"><div class="kpi-value" style="color:#C0C0C0;">'+groups.unit.length+'</div><div class="kpi-label">🥈 מומלצי יחידה</div></div>'
+      +'<div class="kpi"><div class="kpi-value" style="color:#B8860B;">'+groups.recommended.length+'</div><div class="kpi-label">⭐ מומלצים</div></div>'
+      +'</div>';
+
+      // Render each group
+      var order=[{key:'eitan',icon:'🥇',label:'מומלצי איתן',color:'#FFD700'},
+                 {key:'unit',icon:'🥈',label:'מומלצי יחידה',color:'#C0C0C0'},
+                 {key:'recommended',icon:'⭐',label:'מומלצים',color:'#B8860B'}];
+      order.forEach(function(g){
+        if(!groups[g.key].length)return;
+        html+='<div class="section-title" style="border-color:'+g.color+';">'+g.icon+' '+g.label+' ('+groups[g.key].length+')</div>';
+        groups[g.key].forEach(function(c){
+          var stageName=Utils.getStageName(c.stage);
+          var status=Utils.STATUSES[c.status]||c.status;
+          var handled=c.recommendedAt?Utils.formatDate(c.recommendedAt):(c.createdAt?Utils.formatDate(c.createdAt):'-');
+          html+='<div class="card" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+          +'<div class="card-header"><span class="card-name">'+g.icon+' '+Utils.escHtml(c.name)+'</span>'
+          +'<span class="status-badge status-'+c.status+'">'+status+'</span></div>'
+          +'<div class="card-meta">📱 '+Utils.escHtml(c.phone)+' | '+stageName+'</div>'
+          +'<div class="card-meta">ממליץ: '+(c.referrer||'-')+' | רכז: '+(c.recruiter||'-')+'</div>'
+          +'<div class="card-meta">סומן: '+handled+' | עדכון: '+Utils.formatDate(c.updatedAt)+'</div>'
+          +'</div>';
+        });
+      });
+    }
+    html+='</div>';page.innerHTML=html;
+  },
+
+  // Export recommendations as HTML
+  async exportRecommendationsReport(){
+    var all=await DB.getAllCandidates();
+    var recommended=all.filter(function(c){return c.recommendation&&c.recommendation!=='';});
+    var groups={eitan:[],unit:[],recommended:[]};
+    recommended.forEach(function(c){if(groups[c.recommendation])groups[c.recommendation].push(c);});
+
+    var html='<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><style>'
+    +'body{font-family:Arial;direction:rtl;padding:20px}h1{color:#1B2A4A}h2{margin-top:24px;padding-bottom:6px;border-bottom:2px solid #ddd}'
+    +'table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #ddd;padding:8px;text-align:right;font-size:14px}'
+    +'th{background:#1B2A4A;color:#fff}.gold{color:#FFD700}.silver{color:#C0C0C0}.bronze{color:#B8860B}'
+    +'</style></head><body><h1>⭐ דוח מומלצים — Mini Genius</h1>'
+    +'<p>תאריך: '+Utils.formatDate(new Date().toISOString())+'</p>';
+
+    var order=[{key:'eitan',icon:'🥇',label:'מומלצי איתן'},
+               {key:'unit',icon:'🥈',label:'מומלצי יחידה'},
+               {key:'recommended',icon:'⭐',label:'מומלצים'}];
+    order.forEach(function(g){
+      if(!groups[g.key].length)return;
+      html+='<h2>'+g.icon+' '+g.label+' ('+groups[g.key].length+')</h2>'
+      +'<table><tr><th>שם</th><th>טלפון</th><th>תחנה</th><th>סטטוס</th><th>ממליץ</th><th>רכז</th><th>סומן</th><th>עדכון</th></tr>';
+      groups[g.key].forEach(function(c){
+        html+='<tr><td>'+Utils.escHtml(c.name)+'</td><td>'+Utils.escHtml(c.phone)+'</td>'
+        +'<td>'+Utils.getStageName(c.stage)+'</td><td>'+Utils.STATUSES[c.status]+'</td>'
+        +'<td>'+Utils.escHtml(c.referrer||'-')+'</td><td>'+Utils.escHtml(c.recruiter||'-')+'</td>'
+        +'<td>'+(c.recommendedAt?Utils.formatDate(c.recommendedAt):'-')+'</td>'
+        +'<td>'+Utils.formatDate(c.updatedAt)+'</td></tr>';
+      });
+      html+='</table>';
+    });
+    html+='</body></html>';
+    Utils.writeToCacheAndShare('recommendations_'+Utils.today()+'.html',html,'text/html','דוח מומלצים');
   },
 
   setupFAB(){
