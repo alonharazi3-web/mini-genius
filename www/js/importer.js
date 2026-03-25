@@ -58,15 +58,17 @@ var Importer={
 
     if(isXlsx){
       // Parse XLSX using XlsxReader
+      Utils.toast('קורא קובץ Excel...','info');
+      _dbg('Starting XLSX parse for: '+file.name);
       XlsxReader.read(file).then(function(result){
+        _dbg('XLSX read complete: '+result.headers.length+' cols, '+result.rows.length+' rows');
         if(!result.headers.length||!result.rows.length){Utils.toast('קובץ ריק או לא תקין','danger');return;}
         Importer._headers=result.headers;
         Importer._rows=result.rows;
-        _dbg('XLSX parsed: '+Importer._headers.length+' columns, '+Importer._rows.length+' rows');
         Importer._showColumnMapping();
       }).catch(function(err){
-        _dbg('XLSX err: '+err);
-        Utils.toast('שגיאה בקריאת קובץ Excel: '+err,'danger');
+        _dbg('XLSX read FAILED: '+err);
+        Utils.toast('שגיאה בקריאת Excel: '+err,'danger');
       });
     }else{
       // Parse CSV/TSV
