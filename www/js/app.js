@@ -169,8 +169,9 @@ const App={
     active.sort(function(a,b){var pa={high:0,medium:1,low:2};return(pa[a.priority]||1)-(pa[b.priority]||1);});
     var page=Utils.id('mainContent');
     var html='<div class="page active">';
+    // v3.1 #4: Global search
     html+='<div style="padding:10px 14px;"><div class="search-bar">'
-    +'<input class="form-input" id="stageSearch" placeholder="חפש..." oninput="App.filterList(this.value)" style="padding-right:14px;">'
+    +'<input class="form-input" id="stageSearch" placeholder="חפש מועמד בכל השלבים (שם או טלפון)..." oninput="App.globalSearch(this.value)" style="padding-right:14px;">'
     +'</div></div>';
     if(!active.length){
       html+='<div class="empty-state"><div class="icon">💭</div>'
@@ -179,31 +180,67 @@ const App={
       html+='<div id="candidateList">';
       active.forEach(function(c){
         var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
-        var days=Utils.workDaysSince(c.updatedAt);var delayed=days>=ad;
-        html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'">'
+        var days=Utils.workDaysSince(c.stageEnteredAt||c.updatedAt);var delayed=days>=ad;
+        // v3.1 #3: Build grade summary
+        var gradeSummary='';
+        for(var si=1;si<stageId;si++){
+          var g=c['stage'+si+'_grade'];
+          if(g)gradeSummary+=(gradeSummary?' | ':'')+Utils.getStage(si).icon+g+'/7';
+        }
+        var notesTrim=(c.notes||'').substring(0,40);
+        html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
         +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
         +'<span class="card-name">'+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
         +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
         +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
         +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
-        +(delayed?' | <span style="color:var(--danger);">בעיכוב!</span>':'')
-        +'</div></div>'
+        +(delayed?' | <span style="color:var(--danger);">בעיכוב!</span>':'')+'</div>';
+        if(gradeSummary)html+='<div class="card-meta" style="color:var(--primary);">ציונים: '+gradeSummary+'</div>';
+        if(notesTrim)html+='<div class="card-meta">📝 '+Utils.escHtml(notesTrim)+(c.notes.length>40?'...':'')+'</div>';
+        html+='</div>'
         +'<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:8px;">'
         +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;padding:5px 10px;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
         +'</div></div>';
       });
       html+='</div>';
     }
+    // v3.1 #4: Global search results area
+    html+='<div id="globalSearchResults" style="display:none;"></div>';
     html+='</div>';page.innerHTML=html;this.updateBadges();
-    // v2.7 #5: Show tasks at bottom of stage list
     Tasks.renderInline(stageId);
   },
 
-  filterList(q){
-    q=q.toLowerCase();
-    document.querySelectorAll('#candidateList .card').forEach(function(el){
-      el.style.display=el.dataset.name.toLowerCase().includes(q)?'':'none';
+  // v3.1 #4: Global search across ALL stages
+  async globalSearch(q){
+    q=q.trim().toLowerCase();
+    var listEl=Utils.id('candidateList');
+    var resultsEl=Utils.id('globalSearchResults');
+    if(!q||q.length<2){
+      if(listEl)listEl.style.display='';
+      if(resultsEl)resultsEl.style.display='none';
+      return;
+    }
+    if(listEl)listEl.style.display='none';
+    if(!resultsEl)return;
+    var all=await DB.getAllCandidates();
+    var matches=all.filter(function(c){
+      return(c.jobId===App.currentJob)&&(
+        (c.name||'').toLowerCase().includes(q)||
+        (c.phone||'').includes(q)
+      );
     });
+    if(!matches.length){
+      resultsEl.innerHTML='<div class="empty-state" style="padding:20px;"><div>לא נמצאו תוצאות</div></div>';
+      resultsEl.style.display='block';return;
+    }
+    var html='<div style="padding:6px 14px;font-size:.82rem;color:var(--text-light);">'+matches.length+' תוצאות בכל השלבים</div>';
+    matches.forEach(function(c){
+      html+='<div class="card" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+      +'<div class="card-header"><span class="card-name">'+Utils.escHtml(c.name)+'</span>'
+      +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
+      +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div></div>';
+    });
+    resultsEl.innerHTML=html;resultsEl.style.display='block';
   },
 
   async renderCandidateView(id){

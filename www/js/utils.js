@@ -19,6 +19,7 @@ formatDate(iso){if(!iso)return'';return new Date(iso).toLocaleDateString('he-IL'
 formatDateTime(iso){if(!iso)return'';var d=new Date(iso);return d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})},
 today(){return new Date().toISOString().split('T')[0]},
 daysSince(iso){if(!iso)return 999;return Math.floor((Date.now()-new Date(iso).getTime())/864e5)},
+// Work days: Sun-Thu (Israeli week). Skips Fri(5) + Sat(6).
 workDaysSince(iso){if(!iso)return 999;var c=0;var s=new Date(iso),n=new Date(),d=new Date(s);
 while(d<n){var day=d.getDay();if(day!==5&&day!==6)c++;d.setDate(d.getDate()+1);}return c;},
 

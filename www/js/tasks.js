@@ -42,7 +42,7 @@ const Tasks={
 
     cands.forEach(function(c){
       if(c.status==='stopped'||c.status==='frozen')return;
-      var days=Utils.workDaysSince(c.updatedAt);
+      var days=Utils.workDaysSince(c.stageEnteredAt||c.updatedAt);
       if(c.status==='active'){
         if(stageId===1)tasks.push({icon:stageIcon,text:'התקשר ל'+c.name,id:c.id,urgent:days>=ad,system:true,stageId:1});
         if(stageId===2&&!c.stage2_callDone)tasks.push({icon:stageIcon,text:'שיחה טלפונית עם '+c.name,id:c.id,urgent:days>=ad,system:true,stageId:2});
@@ -74,9 +74,12 @@ const Tasks={
     var html='';
     tasks.forEach(function(t){
       var cls=t.urgent?'task-overdue':'';
+      var priBadge='';
+      if(t.priority==='A')priBadge='<span style="color:var(--danger);font-weight:700;font-size:.75rem;flex-shrink:0;">A</span>';
+      else if(t.priority==='C')priBadge='<span style="color:var(--text-light);font-size:.75rem;flex-shrink:0;">C</span>';
       html+='<div class="task-item '+cls+'">';
-      // v2.7 #6: Stage icon
       html+='<span style="font-size:1.1rem;flex-shrink:0;">'+t.icon+'</span>';
+      if(priBadge)html+=priBadge;
       if(t.system){
         html+='<div class="task-check" onclick="App.navigate(\'candidate\',\''+t.id+'\')">▶</div>';
       }else{
@@ -89,7 +92,7 @@ const Tasks={
     return html;
   },
 
-  // v2.7 #7: Add task with station selector + #8: "other" category
+  // v3.1 #2: Add task with station selector + priority A/B/C
   addManual(){
     var html='<div class="modal-title">➕ משימה חדשה</div>'
     +'<div class="form-group"><label class="form-label">תיאור</label>'
@@ -103,16 +106,23 @@ const Tasks={
     });
     html+='<option value="other">❗ אחר</option>';
     html+='</select></div>'
+    +'<div class="form-group"><label class="form-label">תיעדוף</label><div class="radio-group" id="newTaskPri">'
+    +'<div class="radio-btn active" data-val="B" onclick="Tasks._setPri(this)">B רגיל</div>'
+    +'<div class="radio-btn" data-val="A" onclick="Tasks._setPri(this)" style="color:var(--danger);border-color:var(--danger);">A דחוף</div>'
+    +'<div class="radio-btn" data-val="C" onclick="Tasks._setPri(this)" style="color:var(--text-light);">C נמוך</div>'
+    +'</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="Tasks.saveManual()">שמור</button>';
     Stages.showModal(html);
   },
+  _setPri:function(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
   async saveManual(){
     var text=Utils.id('newTaskText')?.value?.trim();var date=Utils.id('newTaskDate')?.value;
     var stageId=Utils.id('newTaskStage')?.value||'other';
+    var priEl=document.querySelector('#newTaskPri .radio-btn.active');
+    var pri=priEl?priEl.dataset.val:'B';
     if(!text){Utils.toast('נא למלא תיאור','danger');return;}
-    await DB.saveTask({text:text,date:date||Utils.today(),stageId:stageId,done:false});
+    await DB.saveTask({text:text,date:date||Utils.today(),stageId:stageId,done:false,priority:pri});
     Stages.closeModal();
-    // Refresh current view
     if(location.hash.startsWith('#tasks'))Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);
   },
@@ -133,24 +143,33 @@ const Tasks={
     all.forEach(async function(t){if(!t.done&&t.date<today){t.date=today;await DB.saveTask(t);}});
   },
 
-  // v2.7 #9: Build all tasks for opening screen (across all stages)
+  // v3.1: Build all tasks — current stage first, sorted by A→B→C priority
   async getAllTasksSorted(){
     var today=Utils.today();var allTasks=[];
+    var currentStage=App.currentStage||1;
     for(var si=1;si<=7;si++){
       var tasks=await Tasks.buildTaskList(si);
       tasks.forEach(function(t){t._globalStage=si;});
       allTasks=allTasks.concat(tasks);
     }
-    // Deduplicate (custom tasks show in multiple stages)
     var seen={};var unique=[];
     allTasks.forEach(function(t){
       var key=t.system?(t.id+'_'+t.stageId):(t.taskId||t.id);
       if(!seen[key]){seen[key]=true;unique.push(t);}
     });
-    // Sort: urgent first, then system, then manual
+    // Sort: current stage first, then priority A→B→C, then urgent
+    var priOrder={A:0,B:1,C:2};
     unique.sort(function(a,b){
+      // Current stage first
+      var aCS=(a._globalStage===currentStage)?0:1;
+      var bCS=(b._globalStage===currentStage)?0:1;
+      if(aCS!==bCS)return aCS-bCS;
+      // Priority A→B→C
+      var aPri=priOrder[a.priority||'B']||1;
+      var bPri=priOrder[b.priority||'B']||1;
+      if(aPri!==bPri)return aPri-bPri;
+      // Urgent first
       if(a.urgent!==b.urgent)return b.urgent?1:-1;
-      if(a.system!==b.system)return a.system?-1:1;
       return 0;
     });
     return unique;

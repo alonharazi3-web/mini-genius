@@ -10,7 +10,7 @@ const Stage3={
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage3_systemUpdated\',this)">'
     +'<div class="cb-box '+(c.stage3_systemUpdated?'checked':'')+'">✓</div><span>עודכן במערכת</span></div>';
     html+='<div style="display:flex;gap:6px;margin-top:8px;">'
-    +'<button class="btn btn-wa btn-sm" onclick="Stages.sendWhatsApp(3,\''+c.id+'\')">📱 הודעה למועמד</button>'
+    +'<button class="btn btn-wa btn-sm" onclick="Stage3.sendToCandidate(\''+c.id+'\')">📱 הודעה למועמד</button>'
     +'<button class="btn btn-wa btn-sm" onclick="Stage3.sendToExamCenter(\''+c.id+'\')">📱 הודעה למוקד</button></div></div>';
     html+='<div class="section-title">תוצאות</div><div class="card">';
     html+='<div class="form-group"><label class="form-label">תוצאה</label><div class="radio-group">'
@@ -26,6 +26,12 @@ const Stage3={
   async _setResult(id,result){var c=await DB.getCandidate(id);c.stage3_result=result;c.stage3_resultAt=new Date().toISOString();
     c.status=result==='pass'?'pass':'fail';
     await DB.saveCandidate(c);DB.logAction('תוצאת מבחן',c.name+' - '+result);App.renderCandidateView(id);},
+  // v3.1 #7: Send message to candidate (uses stage invite template)
+  async sendToCandidate(id){var c=await DB.getCandidate(id);if(!c)return;
+    var msg=(App.settings.msgStageInvite||'').replace('{name}',c.name)
+      .replace('{stageName}',Utils.getStageName(3))
+      .replace('{date}',c.stage3_examDate||'').replace('{time}','');
+    Utils.openWhatsApp(c.phone,msg);},
   async sendToExamCenter(id){var c=await DB.getCandidate(id);var phone=App.settings.examCenterPhone||'';
     if(!phone){Utils.toast('הגדר מספר מוקד בניהול','danger');return;}
     var msg=(App.settings.msgStage3Coord||'').replace('{name}',c.name).replace('{date}',c.stage3_examDate||'');

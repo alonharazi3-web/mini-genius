@@ -64,8 +64,14 @@ const Stages={
 
   sendWhatsApp(stageId,id){
     DB.getCandidate(id).then(function(c){if(!c)return;
-      var key='msgStage'+stageId;var msg=App.settings[key]||App.settings.msgStage1||'';
-      msg=msg.replace('{name}',c.name).replace('{stageName}',Utils.getStageName(stageId));
+      // v3.1 #7: Use correct message key per stage
+      var key;
+      if(stageId===3)key='msgStage3Coord'; // מטלה ביתית uses coordination message
+      else key='msgStage'+stageId;
+      var msg=App.settings[key]||App.settings.msgStageInvite||'';
+      msg=msg.replace('{name}',c.name).replace('{stageName}',Utils.getStageName(stageId))
+        .replace('{date}',c['stage'+stageId+'_date']||c.stage3_examDate||'')
+        .replace('{time}',c['stage'+stageId+'_time']||'');
       Utils.openWhatsApp(c.phone,msg);
     });
   },
@@ -191,8 +197,15 @@ const Stages={
     html+='<div class="section-title">'+stageName+'</div><div class="card">';
     html+='<div class="form-group"><label class="form-label">תאריך</label>'
     +'<input type="date" class="form-input" value="'+(c['stage'+stageId+'_date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_date\',this.value)"></div>';
-    html+='<div class="form-group"><label class="form-label">שעה</label>'
-    +'<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value)"></div>';
+    html+='<div class="form-group"><label class="form-label">שעה</label>';
+    if(stageId===5){
+      // v3.1 #8: Stage 5 fixed time
+      html+='<input type="time" class="form-input" value="08:20" disabled style="opacity:.7;"><div class="card-meta">שעה קבועה 08:20</div>';
+      if(!c.stage5_time)Stages.saveField(c.id,'stage5_time','08:20');
+    }else{
+      html+='<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value)">';
+    }
+    html+='</div>';
     if(stageId===6){
       html+='<div class="form-group"><label class="form-label">שם מנהל מצטרף</label>'
       +'<input class="form-input" value="'+Utils.escHtml(c.stage6_managerName||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage6_managerName\',this.value)" placeholder="שם מנהל"></div>';

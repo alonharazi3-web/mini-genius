@@ -11,7 +11,7 @@ const Dashboard={
     var hesit=cands.filter(function(c){return c.status==='hesitation'}).length;
     var stopped=cands.filter(function(c){return c.status==='stopped'}).length;
     var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
-    var stale=cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.updatedAt)>=ad}).length;
+    var stale=cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.stageEnteredAt||c.updatedAt)>=ad}).length;
     var grades=cands.map(function(c){return c['stage'+stageId+'_grade']}).filter(function(g){return g});
     var avg=grades.length?(grades.reduce(function(a,b){return a+parseInt(b)},0)/grades.length).toFixed(1):'-';
 
@@ -28,7 +28,7 @@ const Dashboard={
     var page=Utils.id('mainContent');
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+stageId+')">←</button>'
-    +'<div style="font-size:1.15rem;font-weight:700;">📊 דשבורד — '+stage.name+'</div>'
+    +'<div style="font-size:1.15rem;font-weight:700;">📊 דשבורד — כל השלבים</div>'
     +'<button class="btn btn-outline btn-sm" style="margin-right:auto;" onclick="Dashboard.exportReport('+stageId+')">📤 ייצוא</button></div>';
 
     // Timeline
@@ -36,7 +36,7 @@ const Dashboard={
     for(var i=1;i<=7;i++){
       var st=Utils.getStage(i);
       var sd=Dashboard._stageData[i];
-      var sDelayed=sd.cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.updatedAt)>=(parseInt(App.settings['alertDaysStage'+i])||5)}).length;
+      var sDelayed=sd.cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.stageEnteredAt||c.updatedAt)>=(parseInt(App.settings['alertDaysStage'+i])||5)}).length;
       html+='<div class="timeline-stage'+(i===stageId?' current':'')+'" onclick="App.navigate(\'stage\','+i+')">'
       +'<span class="stage-icon">'+st.icon+'</span>'
       +'<span class="count">'+sd.active+'</span>'
@@ -84,7 +84,7 @@ const Dashboard={
     else if(type==='pass')list=cands.filter(function(c){return c.status==='pass'});
     else if(type==='fail')list=cands.filter(function(c){return c.status==='fail'});
     else if(type==='hesitation')list=cands.filter(function(c){return c.status==='hesitation'});
-    else if(type==='stale')list=cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.updatedAt)>=ad});
+    else if(type==='stale')list=cands.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.stageEnteredAt||c.updatedAt)>=ad});
     else if(type==='frozen'){list=await DB.getFrozen(App.currentJob);list=list.filter(function(f){return f.frozenFromStage===stageId});}
     else if(type==='allFrozen'){list=await DB.getFrozen(App.currentJob);}
     // FIX #12: early/advanced
@@ -102,7 +102,15 @@ const Dashboard={
     list.forEach(function(c){
       html+='<div class="name-list-item" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
       +Utils.escHtml(c.name)+' <span style="color:var(--text-light);font-size:.78rem;">'+Utils.escHtml(c.phone)
-      +' | '+Utils.getStageName(c.stage)+'</span></div>';
+      +' | '+Utils.getStageName(c.stage)+'</span>';
+      // v3.1 #1: Show stop/message info for failed/stopped candidates
+      if(c.status==='fail'||c.status==='stopped'){
+        var stopped=c.stoppedAt?'⛔ הופסק '+Utils.formatDate(c.stoppedAt):'';
+        var reason=c.stopReason?' ('+Utils.escHtml(c.stopReason.substring(0,30))+')':'';
+        if(stopped)html+='<div style="font-size:.72rem;color:var(--danger);">'+stopped+reason+'</div>';
+        else html+='<div style="font-size:.72rem;color:var(--warning);">⚠️ לא בוצעה הפסקת תהליך</div>';
+      }
+      html+='</div>';
     });
     html+='</div>';area.innerHTML=html;
   },
@@ -120,7 +128,7 @@ const Dashboard={
         pass:sc.filter(function(c){return c.status==='pass'}),
         fail:sc.filter(function(c){return c.status==='fail'}),
         hesit:sc.filter(function(c){return c.status==='hesitation'}),
-        stale:sc.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.updatedAt)>=ad})
+        stale:sc.filter(function(c){return c.status==='active'&&Utils.workDaysSince(c.stageEnteredAt||c.updatedAt)>=ad})
       };
       if(i<=4)earlyCount+=allData[i].active.length;
       else advancedCount+=allData[i].active.length;
