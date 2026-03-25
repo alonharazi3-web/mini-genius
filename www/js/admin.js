@@ -94,8 +94,8 @@ const Admin={
 
     // v3.0: Mega Genius Import
     html+='<div class="admin-section"><h3>📥 ייבוא מ-Mega Genius</h3>'
-    +'<div class="info-box">ייבוא מועמדים מקובץ CSV חיצוני. ניתן להתאים מיפוי עמודות.<br>'
-    +'המערכת תזהה כפילויות ותבקש אישור לכל מועמד.</div>'
+    +'<div class="info-box">ייבוא מועמדים מקובץ Excel (xlsx) או CSV. ניתן להתאים מיפוי עמודות.<br>'
+    +'המערכת מזהה תאריכים, עבר/לא עבר, ציונים, וכפילויות.</div>'
     +'<button class="btn btn-primary" style="width:100%;" onclick="Stages.closeModal();Importer.start()">📥 ייבוא מ-Mega Genius</button>'
     +'</div>';
 

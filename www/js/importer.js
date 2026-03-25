@@ -35,12 +35,12 @@ var Importer={
     var lastDate=App.settings._lastImportDate||'';
     var lastCount=App.settings._lastImportCount||'';
     var html='<div class="modal-title">📥 ייבוא מ-Mega Genius</div>'
-    +'<div class="info-box">בחר קובץ CSV או TSV מיוצא מ-Mega Genius.<br>ניתן לייצא מ-Excel כ-CSV (שמור בשם → CSV UTF-8).</div>';
+    +'<div class="info-box">בחר קובץ Excel (xlsx) או CSV מיוצא מ-Mega Genius.<br>המערכת מזהה אוטומטית תאריכים, עבר/לא עבר, וציונים.</div>';
     if(lastDate){
       html+='<div class="info-box" style="background:#f0fdf4;border-color:#bbf7d0;">ייבוא אחרון: '+Utils.formatDateTime(lastDate)+' ('+lastCount+' מועמדים)<br>המערכת תזהה אוטומטית מה חדש.</div>';
     }
     html+='<div class="form-group"><label class="form-label">בחר קובץ</label>'
-    +'<input type="file" id="importFile" accept=".csv,.tsv,.txt" class="form-input" onchange="Importer.onFileSelected(this)"></div>'
+    +'<input type="file" id="importFile" accept=".csv,.tsv,.txt,.xlsx,.xls" class="form-input" onchange="Importer.onFileSelected(this)"></div>'
     +'<div id="importPreview"></div>'
     +'<button class="btn btn-outline" style="width:100%;margin-top:12px;" onclick="Stages.closeModal()">ביטול</button>';
     Stages.showModal(html);
@@ -50,17 +50,34 @@ var Importer={
     if(!input.files||!input.files[0])return;
     var file=input.files[0];
     _dbg('Import file: '+file.name+' ('+file.size+' bytes)');
-    var reader=new FileReader();
-    reader.onload=function(e){
-      var text=e.target.result;
-      var rows=Importer._parseCSV(text);
-      if(rows.length<2){Utils.toast('קובץ ריק או לא תקין','danger');return;}
-      Importer._headers=rows[0];
-      Importer._rows=rows.slice(1);
-      _dbg('Parsed: '+Importer._headers.length+' columns, '+Importer._rows.length+' rows');
-      Importer._showColumnMapping();
-    };
-    reader.readAsText(file,'UTF-8');
+    var isXlsx=file.name.match(/\.xlsx?$/i);
+
+    if(isXlsx){
+      // Parse XLSX using XlsxReader
+      XlsxReader.read(file).then(function(result){
+        if(!result.headers.length||!result.rows.length){Utils.toast('קובץ ריק או לא תקין','danger');return;}
+        Importer._headers=result.headers;
+        Importer._rows=result.rows;
+        _dbg('XLSX parsed: '+Importer._headers.length+' columns, '+Importer._rows.length+' rows');
+        Importer._showColumnMapping();
+      }).catch(function(err){
+        _dbg('XLSX err: '+err);
+        Utils.toast('שגיאה בקריאת קובץ Excel: '+err,'danger');
+      });
+    }else{
+      // Parse CSV/TSV
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var text=e.target.result;
+        var rows=Importer._parseCSV(text);
+        if(rows.length<2){Utils.toast('קובץ ריק או לא תקין','danger');return;}
+        Importer._headers=rows[0];
+        Importer._rows=rows.slice(1);
+        _dbg('CSV parsed: '+Importer._headers.length+' columns, '+Importer._rows.length+' rows');
+        Importer._showColumnMapping();
+      };
+      reader.readAsText(file,'UTF-8');
+    }
   },
 
   // ===== Column Mapping UI =====
