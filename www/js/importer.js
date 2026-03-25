@@ -40,7 +40,7 @@ var Importer={
       html+='<div class="info-box" style="background:#f0fdf4;border-color:#bbf7d0;">ייבוא אחרון: '+Utils.formatDateTime(lastDate)+' ('+lastCount+' מועמדים)<br>המערכת תזהה אוטומטית מה חדש.</div>';
     }
     html+='<div class="form-group"><label class="form-label">בחר קובץ</label>'
-    +'<input type="file" id="importFile" accept=".csv,.tsv,.txt,.xlsx,.xls" class="form-input" onchange="Importer.onFileSelected(this)"></div>'
+    +'<input type="file" id="importFile" accept="*/*" class="form-input" onchange="Importer.onFileSelected(this)"></div>'
     +'<div id="importPreview"></div>'
     +'<button class="btn btn-outline" style="width:100%;margin-top:12px;" onclick="Stages.closeModal()">ביטול</button>';
     Stages.showModal(html);
@@ -49,8 +49,12 @@ var Importer={
   onFileSelected:function(input){
     if(!input.files||!input.files[0])return;
     var file=input.files[0];
-    _dbg('Import file: '+file.name+' ('+file.size+' bytes)');
-    var isXlsx=file.name.match(/\.xlsx?$/i);
+    _dbg('Import file: '+file.name+' ('+file.size+' bytes, type: '+file.type+')');
+    var isXlsx=file.name.match(/\.xlsx?$/i)||file.type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'||file.type==='application/vnd.ms-excel';
+    var isCsv=file.name.match(/\.(csv|tsv|txt)$/i)||file.type==='text/csv'||file.type==='text/plain';
+    if(!isXlsx&&!isCsv){
+      Utils.toast('סוג קובץ לא נתמך. בחר xlsx, csv או tsv','danger');return;
+    }
 
     if(isXlsx){
       // Parse XLSX using XlsxReader
