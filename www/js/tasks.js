@@ -5,18 +5,19 @@ const Tasks={
 
   async render(stageId){
     stageId=stageId||App.currentStage;var stage=Utils.getStage(stageId);
-    var tasks=await Tasks.buildTaskList(stageId);
+    // v3.1: Show ALL tasks from all stages, current stage first
+    var allTasks=await Tasks.getAllTasksSorted();
 
     var page=Utils.id('mainContent');
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+stageId+')">←</button>'
-    +'<div style="flex:1;font-size:1.15rem;font-weight:700;">✅ משימות — '+stage.name+'</div>'
+    +'<div style="flex:1;font-size:1.15rem;font-weight:700;">✅ משימות — כל השלבים</div>'
     +'<button class="btn btn-primary btn-sm" onclick="Tasks.addManual()">➕</button></div>';
 
-    if(!tasks.length){
+    if(!allTasks.length){
       html+='<div class="empty-state"><div class="icon">🎉</div>אין משימות</div>';
     }else{
-      html+=Tasks._renderTaskItems(tasks,stageId);
+      html+=Tasks._renderTaskItems(allTasks,stageId);
     }
     html+='</div>';page.innerHTML=html;
   },
@@ -61,7 +62,7 @@ const Tasks={
       if(String(tStage)===String(stageId)||tStage==='other'){
         var icon=Tasks.STAGE_ICONS[tStage]||'❗';
         var isOverdue=t.date<today&&!t.done;
-        tasks.push({icon:icon,text:t.text,id:t.id,urgent:isOverdue,system:false,done:t.done,taskId:t.id,stageId:tStage});
+        tasks.push({icon:icon,text:t.text,id:t.id,urgent:isOverdue,system:false,done:t.done,taskId:t.id,stageId:tStage,priority:t.priority||'B'});
       }
     });
 
