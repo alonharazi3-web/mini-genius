@@ -3,9 +3,11 @@ const Tasks={
   // v2.7: Stage icon map for task display
   STAGE_ICONS:{1:'📌',2:'📞',3:'📝',4:'🤝',5:'🏢',6:'⭐',7:'🏭',other:'❗'},
 
+  _inTaskView:false,
+
   async render(stageId){
+    Tasks._inTaskView=true;
     stageId=stageId||App.currentStage;var stage=Utils.getStage(stageId);
-    // v3.1: Show ALL tasks from all stages, current stage first
     var allTasks=await Tasks.getAllTasksSorted();
 
     var page=Utils.id('mainContent');
@@ -24,6 +26,7 @@ const Tasks={
 
   // v2.8: Show ALL tasks from all stages inline
   async renderInline(stageId){
+    Tasks._inTaskView=false;
     var allTasks=await Tasks.getAllTasksSorted();
     if(!allTasks.length)return;
     var container=Utils.id('mainContent');
@@ -75,18 +78,19 @@ const Tasks={
     var html='';
     tasks.forEach(function(t){
       var cls=t.urgent?'task-overdue':'';
-      var priBadge='';
-      if(t.priority==='A')priBadge='<span style="color:var(--danger);font-weight:700;font-size:.75rem;flex-shrink:0;">A</span>';
-      else if(t.priority==='C')priBadge='<span style="color:var(--text-light);font-size:.75rem;flex-shrink:0;">C</span>';
+      // v3.1: Show priority letter before task text
+      var priLabel='';
+      if(t.priority==='A')priLabel='<span style="color:var(--danger);font-weight:700;">[A] </span>';
+      else if(t.priority==='B')priLabel='<span style="color:var(--accent);font-weight:600;">[B] </span>';
+      else if(t.priority==='C')priLabel='<span style="color:var(--text-light);">[C] </span>';
       html+='<div class="task-item '+cls+'">';
       html+='<span style="font-size:1.1rem;flex-shrink:0;">'+t.icon+'</span>';
-      if(priBadge)html+=priBadge;
       if(t.system){
         html+='<div class="task-check" onclick="App.navigate(\'candidate\',\''+t.id+'\')">▶</div>';
       }else{
         html+='<div class="task-check '+(t.done?'done':'')+'" onclick="Tasks.toggleCustomTask(\''+t.taskId+'\')">'+(t.done?'✓':'○')+'</div>';
       }
-      html+='<div class="task-text '+(t.done?'done':'')+'">'+Utils.escHtml(t.text)+'</div>';
+      html+='<div class="task-text '+(t.done?'done':'')+'">'+priLabel+Utils.escHtml(t.text)+'</div>';
       if(!t.system)html+='<button style="background:none;border:none;color:var(--danger);font-size:1.1rem;" onclick="Tasks.deleteTask(\''+t.taskId+'\')">×</button>';
       html+='</div>';
     });
@@ -124,19 +128,18 @@ const Tasks={
     if(!text){Utils.toast('נא למלא תיאור','danger');return;}
     await DB.saveTask({text:text,date:date||Utils.today(),stageId:stageId,done:false,priority:pri});
     Stages.closeModal();
-    if(location.hash.startsWith('#tasks'))Tasks.render(App.currentStage);
+    if(Tasks._inTaskView)Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);
   },
   async toggleCustomTask(taskId){
     var tasks=await DB.getAllTasks();var t=tasks.find(function(x){return x.id===taskId});
     if(!t)return;t.done=!t.done;await DB.saveTask(t);
-    // Refresh
-    if(location.hash.startsWith('#tasks'))Tasks.render(App.currentStage);
+    if(Tasks._inTaskView)Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);
   },
   async deleteTask(taskId){
     await DB.delTask(taskId);
-    if(location.hash.startsWith('#tasks'))Tasks.render(App.currentStage);
+    if(Tasks._inTaskView)Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);
   },
   async carryOverTasks(){
