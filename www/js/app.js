@@ -22,8 +22,19 @@ const App={
       this.navigate('stage',1);
     }
     Tasks.carryOverTasks();
-    // v2.7 #9: Show opening screen after splash
-    setTimeout(function(){App.showOpeningScreen()},3000);
+    // v3.2: Init sync + show recruiter/sync prompt
+    await Sync.init();
+    setTimeout(function(){
+      // Show opening screen, then check sync
+      App.showOpeningScreen();
+      setTimeout(function(){
+        if(Sync.isSignedIn()&&!Sync._currentRecruiter){
+          Sync.showRecruiterSelect();
+        }else if(Sync.isSignedIn()){
+          Sync._promptStartupSync();
+        }
+      },3500);
+    },3000);
 
     // FIX #4: Auto-save every 10 seconds (backup) + immediate on pause/visibility
     setInterval(function(){App.flushDirty()},10000);
@@ -190,7 +201,7 @@ const App={
         var notesTrim=(c.notes||'').substring(0,40);
         html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
         +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-        +'<span class="card-name">'+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
+        +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
         +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
         +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
         +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
@@ -249,7 +260,7 @@ const App={
     var page=Utils.id('mainContent');
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+c.stage+')">←</button>'
-    +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</div>'
+    +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</div>'
     +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)
     +(c.recommendation?' | '+Utils.REC_LABELS[c.recommendation]:'')+'</div></div>'
     +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>';
@@ -258,6 +269,7 @@ const App={
     +'<button class="btn btn-wa btn-sm" onclick="Stages.sendWhatsApp('+c.stage+',\''+c.id+'\')">📱 וואצאפ</button>';
     if(c.stage<=2)html+='<button class="btn btn-purple btn-sm" onclick="Stages.freezeCandidate(\''+c.id+'\')">❄️ הקפאה</button>';
     html+='<button class="btn btn-danger btn-sm" onclick="Stages.stopProcess(\''+c.id+'\')">⛔ הפסק</button>';
+    html+='<button class="btn btn-outline btn-sm" onclick="App.showCandidateOverview(\''+c.id+'\')">📋 סקירה</button>';
     html+='</div>';
     if(c.stage===1)html+=Stage1.renderDetail(c);
     else if(c.stage===2)html+=Stage2.renderDetail(c);
@@ -382,12 +394,14 @@ const App={
           var stageName=Utils.getStageName(c.stage);
           var status=Utils.STATUSES[c.status]||c.status;
           var handled=c.recommendedAt?Utils.formatDate(c.recommendedAt):(c.createdAt?Utils.formatDate(c.createdAt):'-');
+          var notesAll='';
+          for(var si=1;si<=7;si++){var n=c['stage'+si+'_notes'];if(n)notesAll+=(notesAll?', ':'')+Utils.getStage(si).icon+n.substring(0,30);}
           html+='<div class="card" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
           +'<div class="card-header"><span class="card-name">'+g.icon+' '+Utils.escHtml(c.name)+'</span>'
           +'<span class="status-badge status-'+c.status+'">'+status+'</span></div>'
           +'<div class="card-meta">📱 '+Utils.escHtml(c.phone)+' | '+stageName+'</div>'
           +'<div class="card-meta">ממליץ: '+(c.referrer||'-')+' | רכז: '+(c.recruiter||'-')+'</div>'
-          +'<div class="card-meta">סומן: '+handled+' | עדכון: '+Utils.formatDate(c.updatedAt)+'</div>'
+          +(notesAll?'<div class="card-meta">📝 '+Utils.escHtml(notesAll)+'</div>':'')
           +'</div>';
         });
       });
@@ -415,18 +429,71 @@ const App={
     order.forEach(function(g){
       if(!groups[g.key].length)return;
       html+='<h2>'+g.icon+' '+g.label+' ('+groups[g.key].length+')</h2>'
-      +'<table><tr><th>שם</th><th>טלפון</th><th>תחנה</th><th>סטטוס</th><th>ממליץ</th><th>רכז</th><th>סומן</th><th>עדכון</th></tr>';
+      +'<table><tr><th>שם</th><th>טלפון</th><th>תחנה</th><th>סטטוס</th><th>ממליץ</th><th>רכז</th><th>הערות</th></tr>';
       groups[g.key].forEach(function(c){
+        var notesAll='';
+        for(var si=1;si<=7;si++){var n=c['stage'+si+'_notes'];if(n)notesAll+=(notesAll?' | ':'')+Utils.getStage(si).icon+n.substring(0,40);}
+        if(c.notes)notesAll=(c.notes.substring(0,40))+(notesAll?' | '+notesAll:'');
         html+='<tr><td>'+Utils.escHtml(c.name)+'</td><td>'+Utils.escHtml(c.phone)+'</td>'
         +'<td>'+Utils.getStageName(c.stage)+'</td><td>'+Utils.STATUSES[c.status]+'</td>'
         +'<td>'+Utils.escHtml(c.referrer||'-')+'</td><td>'+Utils.escHtml(c.recruiter||'-')+'</td>'
-        +'<td>'+(c.recommendedAt?Utils.formatDate(c.recommendedAt):'-')+'</td>'
-        +'<td>'+Utils.formatDate(c.updatedAt)+'</td></tr>';
+        +'<td>'+Utils.escHtml(notesAll||'-')+'</td></tr>';
       });
       html+='</table>';
     });
     html+='</body></html>';
     Utils.writeToCacheAndShare('recommendations_'+Utils.today()+'.html',html,'text/html','דוח מומלצים');
+  },
+
+  // v3.1: Full candidate overview
+  async showCandidateOverview(id){
+    var c=await DB.getCandidate(id);if(!c)return;
+    var html='<div class="modal-title">📋 סקירת מועמד — '+Utils.escHtml(c.name)+'</div>';
+    // Basic info
+    html+='<div style="margin-bottom:12px;">'
+    +'<div style="font-size:.88rem;"><strong>טלפון:</strong> '+Utils.escHtml(c.phone)+'</div>'
+    +'<div style="font-size:.88rem;"><strong>תחנה:</strong> '+Utils.getStageName(c.stage)+'</div>'
+    +'<div style="font-size:.88rem;"><strong>סטטוס:</strong> '+Utils.STATUSES[c.status]+'</div>'
+    +'<div style="font-size:.88rem;"><strong>עדיפות:</strong> '+(c.priority==='high'?'🔴 גבוה':c.priority==='low'?'🟢 נמוך':'🟠 בינוני')+'</div>';
+    if(c.recommendation)html+='<div style="font-size:.88rem;"><strong>המלצה:</strong> '+Utils.REC_ICONS[c.recommendation]+' '+Utils.REC_LABELS[c.recommendation]+'</div>';
+    if(c.referrer)html+='<div style="font-size:.88rem;"><strong>ממליץ:</strong> '+Utils.escHtml(c.referrer)+'</div>';
+    if(c.recruiter)html+='<div style="font-size:.88rem;"><strong>רכז:</strong> '+Utils.escHtml(c.recruiter)+'</div>';
+    if(c.notes)html+='<div style="font-size:.88rem;"><strong>הערות:</strong> '+Utils.escHtml(c.notes)+'</div>';
+    html+='</div>';
+    // CV
+    if(c.cvFileName)html+='<div class="info-box">📎 קו"ח: '+Utils.escHtml(c.cvFileName)+'</div>';
+    // Phone questionnaire summary
+    if(c.stage2_q_grade){
+      html+='<div style="padding:8px;background:var(--bg);border-radius:8px;margin-bottom:8px;">'
+      +'<strong>📞 שאלון טלפוני:</strong> ציון '+c.stage2_q_grade+'/7'
+      +(c.stage2_q_result?' | '+Utils.escHtml(c.stage2_q_result):'')
+      +(c.stage2_q_notes?'<br>📝 '+Utils.escHtml(c.stage2_q_notes):'')+'</div>';
+    }
+    // Stage grades & notes
+    html+='<div style="font-weight:700;margin:10px 0 6px;">ציונים והערות לפי תחנה:</div>';
+    var hasData=false;
+    for(var si=1;si<=7;si++){
+      var grade=c['stage'+si+'_grade'];
+      var notes=c['stage'+si+'_notes'];
+      var decision=c['stage'+si+'_decision'];
+      var completed=c['stage'+si+'_completedAt'];
+      if(grade||notes||decision||completed){
+        hasData=true;
+        var st=Utils.getStage(si);
+        html+='<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem;">'
+        +'<strong>'+st.icon+' '+st.name+':</strong> ';
+        var parts=[];
+        if(grade)parts.push('ציון '+grade+'/7');
+        if(decision)parts.push(decision==='pass'?'✅ עבר':decision==='fail'?'❌ לא עבר':'⏳ '+decision);
+        if(completed)parts.push(Utils.formatDate(completed));
+        html+=parts.join(' | ');
+        if(notes)html+='<br>📝 '+Utils.escHtml(notes);
+        html+='</div>';
+      }
+    }
+    if(!hasData)html+='<div class="card-meta">אין נתונים עדיין</div>';
+    html+='<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="Stages.closeModal()">סגור</button>';
+    Stages.showModal(html);
   },
 
   setupFAB(){

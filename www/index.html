@@ -18,7 +18,7 @@
 <div id="debugLog" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,.85);
 color:#0f0;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;padding:4px 8px;
 direction:ltr;text-align:left;display:none;">
-<div style="display:flex;justify-content:space-between;"><span>Debug Log v3.1</span>
+<div style="display:flex;justify-content:space-between;"><span>Debug Log v3.2</span>
 <span onclick="this.parentElement.parentElement.style.display='none'" style="cursor:pointer;color:red;font-size:14px;">X</span></div>
 <div id="debugLines"></div>
 </div>
@@ -28,7 +28,7 @@ direction:ltr;text-align:left;display:none;">
 <img src="img/icon.png" style="width:36px;height:36px;border-radius:8px;">
 <div>
 <h1>Mini Genius</h1>
-<div class="header-sub" id="appVersion">v3.1</div>
+<div class="header-sub" id="appVersion">v3.2</div>
 </div>
 <button class="header-btn" onclick="App.navigate('daysummary')" title="סיכום יום">📋</button>
 <button class="header-btn" onclick="App.navigate('admin')" title="ניהול">⚙️</button>
@@ -55,6 +55,8 @@ direction:ltr;text-align:left;display:none;">
 <span class="fab-icon">📋</span> 📋 סיכום יום</button>
 <button class="fab-item" onclick="App.showRecommendationsReport();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
 <span class="fab-icon">⭐</span> ⭐ דוח מומלצים</button>
+<button class="fab-item" onclick="Sync.exitApp();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">🚪</span> 🚪 יציאה</button>
 </div>
 <button class="fab" id="fab">+</button>
 
@@ -95,6 +97,7 @@ _dbg('Page loaded, UA: '+navigator.userAgent.substr(0,60));
 <script src="js/daysummary.js" onload="_dbg('daysummary.js OK')"></script>
 <script src="js/admin.js" onload="_dbg('admin.js OK')"></script>
 <script src="js/importer.js" onload="_dbg('importer.js OK')"></script>
+<script src="js/sync.js" onload="_dbg('sync.js OK')"></script>
 <script src="js/app.js" onload="_dbg('app.js OK')"></script>
 <script src="cordova.js"></script>
 </body>

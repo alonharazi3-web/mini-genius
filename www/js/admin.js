@@ -92,6 +92,9 @@ const Admin={
     }
     html+='</div>';
 
+    // v3.2: Google Drive Sync
+    html+=Sync.renderSettings();
+
     // v3.0: Mega Genius Import
     html+='<div class="admin-section"><h3>📥 ייבוא מ-Mega Genius</h3>'
     +'<div class="info-box">ייבוא מועמדים מקובץ Excel (xlsx) או CSV. ניתן להתאים מיפוי עמודות.<br>'
@@ -196,7 +199,7 @@ const Admin={
     _dbg('Export: '+candidates.length+' candidates, '+settingsRows.length+' settings, '+jobs.length+' jobs');
 
     var data={
-      version:'3.1',
+      version:'3.2',
       exportDate:new Date().toISOString(),
       candidates:candidates,
       jobs:jobs,

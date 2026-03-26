@@ -1,0 +1,494 @@
+'use strict';
+// Google Drive Sync — OAuth2 via InAppBrowser, Drive REST API v3
+var Sync={
+  _token:null,_tokenExpiry:0,_syncFileId:null,_autoUploadTimer:null,_autoCheckTimer:null,
+  _lastSyncHash:'',_currentRecruiter:'',
+
+  // ===== INIT — start timers if sync is configured =====
+  async init(){
+    var clientId=App.settings.gdrive_clientId||'';
+    var token=App.settings.gdrive_token||'';
+    var expiry=parseInt(App.settings.gdrive_tokenExpiry)||0;
+    Sync._syncFileId=App.settings.gdrive_fileId||'';
+    Sync._currentRecruiter=App.settings.currentRecruiter||'';
+    if(clientId&&token&&expiry>Date.now()){
+      Sync._token=token;Sync._tokenExpiry=expiry;
+      _dbg('Sync: token loaded, expires '+new Date(expiry).toLocaleTimeString());
+      Sync._startTimers();
+    }
+  },
+
+  // ===== RECRUITER SELECTION =====
+  showRecruiterSelect(){
+    var recs=JSON.parse(App.settings.recruiters||'[]');
+    if(!recs.length){Utils.toast('הגדר רכזים בניהול','warning');return;}
+    var html='<div class="modal-title">👤 בחר רכז מטפל</div>';
+    recs.forEach(function(r){
+      var active=r===Sync._currentRecruiter?' style="background:var(--accent);color:#fff;"':'';
+      html+='<div class="card" onclick="Sync.setRecruiter(\''+Utils.escHtml(r)+'\')"'+active+'>'
+      +'<div style="font-size:1rem;font-weight:600;text-align:center;">'+Utils.escHtml(r)+'</div></div>';
+    });
+    html+='<button class="btn btn-outline" style="width:100%;margin-top:12px;" onclick="Stages.closeModal()">ביטול</button>';
+    Stages.showModal(html);
+  },
+  async setRecruiter(name){
+    Sync._currentRecruiter=name;
+    await DB.setSetting('currentRecruiter',name);
+    App.settings.currentRecruiter=name;
+    Stages.closeModal();
+    Utils.toast('רכז: '+name,'success');
+  },
+
+  // ===== GOOGLE SIGN-IN via InAppBrowser =====
+  async signIn(){
+    var clientId=App.settings.gdrive_clientId||'';
+    if(!clientId){Utils.toast('הגדר Client ID בהגדרות סנכרון','danger');return;}
+    _dbg('Sync: starting OAuth...');
+
+    // Build OAuth URL — implicit grant flow
+    var redirectUri='https://localhost/callback';
+    var scope='https://www.googleapis.com/auth/drive.file';
+    var url='https://accounts.google.com/o/oauth2/v2/auth'
+    +'?client_id='+encodeURIComponent(clientId)
+    +'&redirect_uri='+encodeURIComponent(redirectUri)
+    +'&response_type=token'
+    +'&scope='+encodeURIComponent(scope)
+    +'&prompt=consent';
+
+    if(window.cordova&&window.cordova.InAppBrowser){
+      var iab=cordova.InAppBrowser.open(url,'_blank','location=yes,clearsessioncache=yes,clearcache=yes');
+      iab.addEventListener('loadstart',function(event){
+        if(event.url.indexOf(redirectUri)===0){
+          iab.close();
+          Sync._handleOAuthRedirect(event.url);
+        }
+      });
+      iab.addEventListener('loaderror',function(event){
+        if(event.url.indexOf(redirectUri)===0){
+          iab.close();
+          Sync._handleOAuthRedirect(event.url);
+        }
+      });
+    }else{
+      // Browser fallback
+      Utils.toast('InAppBrowser לא זמין — נדרש Cordova','danger');
+    }
+  },
+
+  async _handleOAuthRedirect(url){
+    _dbg('Sync: OAuth redirect: '+url.substring(0,80));
+    var hash=url.split('#')[1]||'';
+    var params={};
+    hash.split('&').forEach(function(p){var kv=p.split('=');params[kv[0]]=decodeURIComponent(kv[1]||'');});
+
+    if(params.access_token){
+      Sync._token=params.access_token;
+      var expiresIn=parseInt(params.expires_in)||3600;
+      Sync._tokenExpiry=Date.now()+(expiresIn*1000);
+      // Save token
+      await DB.setSetting('gdrive_token',Sync._token);
+      await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
+      App.settings.gdrive_token=Sync._token;
+      App.settings.gdrive_tokenExpiry=String(Sync._tokenExpiry);
+      _dbg('Sync: signed in, token expires in '+expiresIn+'s');
+      Utils.toast('מחובר ל-Google Drive!','success');
+      // Find or create sync file
+      await Sync._findOrCreateSyncFile();
+      Sync._startTimers();
+    }else{
+      _dbg('Sync: OAuth failed — no token');
+      Utils.toast('כניסה נכשלה','danger');
+    }
+  },
+
+  async signOut(){
+    Sync._token=null;Sync._tokenExpiry=0;Sync._syncFileId='';
+    await DB.setSetting('gdrive_token','');
+    await DB.setSetting('gdrive_tokenExpiry','0');
+    await DB.setSetting('gdrive_fileId','');
+    App.settings.gdrive_token='';
+    Sync._stopTimers();
+    Utils.toast('נותקת מ-Google Drive','success');
+  },
+
+  isSignedIn(){return Sync._token&&Sync._tokenExpiry>Date.now();},
+
+  // ===== DRIVE API HELPERS =====
+  async _apiCall(url,opts){
+    if(!Sync._token)throw new Error('Not signed in');
+    opts=opts||{};opts.headers=opts.headers||{};
+    opts.headers['Authorization']='Bearer '+Sync._token;
+    var resp=await fetch(url,opts);
+    if(resp.status===401){
+      Sync._token=null;
+      Utils.toast('פג תוקף ההתחברות — היכנס מחדש','warning');
+      throw new Error('Token expired');
+    }
+    return resp;
+  },
+
+  async _findOrCreateSyncFile(){
+    var folderName=App.settings.gdrive_folder||'MiniGenius';
+    _dbg('Sync: looking for folder: '+folderName);
+
+    // Find folder
+    var q="name='"+folderName+"' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    var resp=await Sync._apiCall('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name)');
+    var data=await resp.json();
+    var folderId;
+    if(data.files&&data.files.length){
+      folderId=data.files[0].id;
+    }else{
+      // Create folder
+      var fResp=await Sync._apiCall('https://www.googleapis.com/drive/v3/files',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:folderName,mimeType:'application/vnd.google-apps.folder'})
+      });
+      var fData=await fResp.json();
+      folderId=fData.id;
+      _dbg('Sync: created folder: '+folderId);
+    }
+
+    // Find sync file in folder
+    var jobName=(App.settings.activeJobName||'default').replace(/[^א-תa-zA-Z0-9]/g,'_');
+    var fileName='minigenius_'+jobName+'.json';
+    var q2="name='"+fileName+"' and '"+folderId+"' in parents and trashed=false";
+    var resp2=await Sync._apiCall('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q2)+'&fields=files(id,name,modifiedTime)');
+    var data2=await resp2.json();
+    if(data2.files&&data2.files.length){
+      Sync._syncFileId=data2.files[0].id;
+      _dbg('Sync: found file: '+Sync._syncFileId);
+    }else{
+      // Create file
+      var meta={name:fileName,parents:[folderId]};
+      var form=new FormData();
+      form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+      form.append('file',new Blob([JSON.stringify({version:1,candidates:[],jobs:[],tasks:[],settings:{},syncedAt:new Date().toISOString()})],{type:'application/json'}));
+      var cResp=await Sync._apiCall('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+        method:'POST',body:form
+      });
+      var cData=await cResp.json();
+      Sync._syncFileId=cData.id;
+      _dbg('Sync: created file: '+Sync._syncFileId);
+    }
+    await DB.setSetting('gdrive_fileId',Sync._syncFileId);
+    App.settings.gdrive_fileId=Sync._syncFileId;
+  },
+
+  // ===== DOWNLOAD & UPLOAD =====
+  async download(){
+    if(!Sync._syncFileId)await Sync._findOrCreateSyncFile();
+    var resp=await Sync._apiCall('https://www.googleapis.com/drive/v3/files/'+Sync._syncFileId+'?alt=media');
+    var remote=await resp.json();
+    _dbg('Sync: downloaded '+( remote.candidates||[]).length+' candidates');
+    return remote;
+  },
+
+  async upload(data){
+    if(!Sync._syncFileId)await Sync._findOrCreateSyncFile();
+    data.syncedAt=new Date().toISOString();
+    data.syncedBy=Sync._currentRecruiter||'unknown';
+    var body=JSON.stringify(data);
+    var resp=await Sync._apiCall('https://www.googleapis.com/upload/drive/v3/files/'+Sync._syncFileId+'?uploadType=media',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:body
+    });
+    _dbg('Sync: uploaded '+(data.candidates||[]).length+' candidates');
+    Sync._lastSyncHash=Sync._hash(body);
+    await DB.setSetting('_lastSyncTime',new Date().toISOString());
+    return resp.ok;
+  },
+
+  // ===== EXPORT LOCAL DB TO JSON =====
+  async exportLocal(){
+    var candidates=await DB.getAllCandidates();
+    var jobs=await DB.getAllJobs();
+    var tasks=await DB.getAllTasks();
+    var settings=await DB.getAllSettings();
+    // Add deleted tombstones
+    var tombstones=[];
+    try{var ts=await DB.getSetting('_tombstones');
+    if(ts)tombstones=JSON.parse(ts);}catch(e){}
+    return{version:1,candidates:candidates,jobs:jobs,tasks:tasks,
+      settings:settings,tombstones:tombstones,
+      exportedAt:new Date().toISOString(),
+      exportedBy:Sync._currentRecruiter||'unknown'};
+  },
+
+  // ===== MERGE — detect conflicts, prompt user =====
+  async mergeAndSync(direction){
+    try{
+      Utils.toast('מסנכרן...','info');
+      var local=await Sync.exportLocal();
+      var remote=await Sync.download();
+
+      // Build phone→candidate maps
+      var localMap={};local.candidates.forEach(function(c){localMap[c.phone]=c;});
+      var remoteMap={};(remote.candidates||[]).forEach(function(c){remoteMap[c.phone]=c;});
+
+      // Detect conflicts and new records
+      var conflicts=[];var autoMerged=[];var newLocal=[];var newRemote=[];
+
+      // Check all remote candidates
+      (remote.candidates||[]).forEach(function(rc){
+        var lc=localMap[rc.phone];
+        if(!lc){
+          // New from remote
+          newRemote.push(rc);
+        }else if(rc.updatedAt!==lc.updatedAt){
+          // Both exist but different — conflict
+          conflicts.push({local:lc,remote:rc});
+        }
+        // else identical — skip
+      });
+
+      // Check local candidates not in remote
+      local.candidates.forEach(function(lc){
+        if(!remoteMap[lc.phone]){newLocal.push(lc);}
+      });
+
+      // Handle tombstones
+      var remoteTombstones=remote.tombstones||[];
+      var localTombstones=local.tombstones||[];
+      var allTombstones=[].concat(remoteTombstones,localTombstones);
+      // Remove unique duplicates
+      var tombMap={};allTombstones.forEach(function(t){tombMap[t.phone]=t;});
+      allTombstones=Object.values(tombMap);
+
+      _dbg('Sync merge: '+conflicts.length+' conflicts, '+newRemote.length+' new remote, '+newLocal.length+' new local');
+
+      if(conflicts.length){
+        // Show conflict resolution UI
+        Sync._conflicts=conflicts;
+        Sync._newLocal=newLocal;
+        Sync._newRemote=newRemote;
+        Sync._remoteTasks=remote.tasks||[];
+        Sync._conflictIdx=0;
+        Sync._resolved=[];
+        Sync._showConflict();
+      }else{
+        // No conflicts — auto-merge
+        await Sync._applyMerge(newLocal,newRemote,[],remote.tasks||[]);
+      }
+    }catch(e){
+      _dbg('Sync err: '+e);
+      Utils.toast('שגיאת סנכרון: '+e.message,'danger');
+    }
+  },
+
+  _conflicts:[],_newLocal:[],_newRemote:[],_remoteTasks:[],_conflictIdx:0,_resolved:[],
+
+  _showConflict:function(){
+    var idx=Sync._conflictIdx;
+    if(idx>=Sync._conflicts.length){
+      // All resolved — apply
+      Sync._applyMerge(Sync._newLocal,Sync._newRemote,Sync._resolved,Sync._remoteTasks);
+      return;
+    }
+    var c=Sync._conflicts[idx];var lc=c.local;var rc=c.remote;
+    var html='<div class="modal-title">⚠️ סנכרון — התנגשות '+(idx+1)+'/'+Sync._conflicts.length+'</div>';
+    html+='<div style="font-size:1.05rem;font-weight:700;margin-bottom:10px;">'+Utils.escHtml(lc.name||rc.name)+'</div>';
+
+    // Side by side comparison
+    html+='<div style="display:flex;gap:8px;">';
+    // Local
+    html+='<div style="flex:1;background:#f0f9ff;padding:10px;border-radius:8px;border:2px solid #4A90D9;">'
+    +'<div style="font-weight:700;color:#4A90D9;margin-bottom:6px;">📱 מקומי</div>'
+    +'<div style="font-size:.78rem;">תחנה: '+Utils.getStageName(lc.stage)+'</div>'
+    +'<div style="font-size:.78rem;">סטטוס: '+(Utils.STATUSES[lc.status]||lc.status)+'</div>'
+    +'<div style="font-size:.78rem;">רכז: '+(lc.recruiter||'-')+'</div>'
+    +'<div style="font-size:.78rem;">עדכון: '+Utils.formatDateTime(lc.updatedAt)+'</div>'
+    +'</div>';
+    // Remote
+    html+='<div style="flex:1;background:#fef9f0;padding:10px;border-radius:8px;border:2px solid #F39C12;">'
+    +'<div style="font-weight:700;color:#F39C12;margin-bottom:6px;">☁️ ענן</div>'
+    +'<div style="font-size:.78rem;">תחנה: '+Utils.getStageName(rc.stage)+'</div>'
+    +'<div style="font-size:.78rem;">סטטוס: '+(Utils.STATUSES[rc.status]||rc.status)+'</div>'
+    +'<div style="font-size:.78rem;">רכז: '+(rc.recruiter||'-')+'</div>'
+    +'<div style="font-size:.78rem;">עדכון: '+Utils.formatDateTime(rc.updatedAt)+'</div>'
+    +'</div></div>';
+
+    html+='<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">'
+    +'<button class="btn btn-primary" onclick="Sync._resolveConflict(\'local\')">📱 השאר מקומי</button>'
+    +'<button class="btn btn-outline" onclick="Sync._resolveConflict(\'remote\')">☁️ קח מהענן</button>'
+    +'<button class="btn btn-outline" style="color:var(--text-light);" onclick="Sync._resolveConflict(\'skip\')">⏭ דלג</button>'
+    +'</div>';
+    Stages.showModal(html);
+  },
+
+  _resolveConflict:function(choice){
+    var c=Sync._conflicts[Sync._conflictIdx];
+    Sync._resolved.push({local:c.local,remote:c.remote,choice:choice});
+    Sync._conflictIdx++;
+    Stages.closeModal();
+    Sync._showConflict();
+  },
+
+  async _applyMerge(newLocal,newRemote,resolved,remoteTasks){
+    // Import new remote candidates
+    for(var i=0;i<newRemote.length;i++){
+      var rc=newRemote[i];rc.id=rc.id||'c_sync_'+Date.now()+'_'+i;
+      await DB.saveCandidate(rc);
+    }
+    // Apply conflict resolutions
+    for(var i=0;i<resolved.length;i++){
+      var r=resolved[i];
+      if(r.choice==='remote'){
+        r.remote.id=r.local.id; // keep local ID
+        await DB.saveCandidate(r.remote);
+      }
+      // 'local' and 'skip' — keep local as-is
+    }
+    // Merge tasks (add remote tasks not in local)
+    var localTasks=await DB.getAllTasks();
+    var localTaskTexts={};localTasks.forEach(function(t){localTaskTexts[t.text+'|'+t.date]=true;});
+    for(var i=0;i<remoteTasks.length;i++){
+      var rt=remoteTasks[i];
+      if(!localTaskTexts[rt.text+'|'+rt.date]){
+        rt.id='t_sync_'+Date.now()+'_'+i;
+        await DB.saveTask(rt);
+      }
+    }
+    // Upload merged state
+    var merged=await Sync.exportLocal();
+    // Add new local candidates to merged
+    await Sync.upload(merged);
+
+    Utils.toast('סנכרון הושלם! '+newRemote.length+' חדשים, '+resolved.length+' נפתרו','success');
+    _dbg('Sync: merge complete');
+    App.settings=await DB.getAllSettings();
+    App.renderStageList(App.currentStage);
+    App.updateBadges();
+  },
+
+  // ===== AUTO TIMERS =====
+  _startTimers:function(){
+    Sync._stopTimers();
+    // Upload every 30 min
+    Sync._autoUploadTimer=setInterval(function(){
+      if(Sync.isSignedIn()){
+        _dbg('Sync: auto-upload (30min)');
+        Sync.exportLocal().then(function(d){Sync.upload(d);}).catch(function(e){_dbg('Auto-upload err: '+e);});
+      }
+    },30*60*1000);
+    // Check for changes every 60 min
+    Sync._autoCheckTimer=setInterval(function(){
+      if(Sync.isSignedIn())Sync._checkRemoteChanges();
+    },60*60*1000);
+    _dbg('Sync: timers started (upload 30m, check 60m)');
+  },
+
+  _stopTimers:function(){
+    if(Sync._autoUploadTimer){clearInterval(Sync._autoUploadTimer);Sync._autoUploadTimer=null;}
+    if(Sync._autoCheckTimer){clearInterval(Sync._autoCheckTimer);Sync._autoCheckTimer=null;}
+  },
+
+  async _checkRemoteChanges(){
+    try{
+      var resp=await Sync._apiCall('https://www.googleapis.com/drive/v3/files/'+Sync._syncFileId+'?fields=modifiedTime');
+      var data=await resp.json();
+      var lastSync=App.settings._lastSyncTime||'';
+      if(data.modifiedTime&&data.modifiedTime>lastSync){
+        _dbg('Sync: remote changes detected!');
+        Stages.showModal('<div class="modal-title">☁️ שינויים בענן</div>'
+        +'<div class="info-box">נמצאו שינויים בקובץ הסנכרון.<br>האם לעדכן?</div>'
+        +'<div style="display:flex;gap:8px;margin-top:12px;">'
+        +'<button class="btn btn-primary" style="flex:1;" onclick="Stages.closeModal();Sync.mergeAndSync()">🔄 עדכן</button>'
+        +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">לא עכשיו</button></div>');
+      }
+    }catch(e){_dbg('Check remote err: '+e);}
+  },
+
+  // ===== EXIT — upload + optional report + close =====
+  async exitApp(){
+    var html='<div class="modal-title">🚪 יציאה מהאפליקציה</div>';
+    if(Sync.isSignedIn()){
+      html+='<div class="info-box">האפליקציה תעלה את הנתונים לענן לפני היציאה.</div>';
+    }
+    html+='<div class="cb-row" onclick="this.querySelector(\'.cb-box\').classList.toggle(\'checked\')">'
+    +'<div class="cb-box checked" id="exitUpload">✓</div><span>העלה נתונים לענן</span></div>'
+    +'<div class="cb-row" onclick="this.querySelector(\'.cb-box\').classList.toggle(\'checked\')">'
+    +'<div class="cb-box" id="exitReport">✓</div><span>שלח דוח סיכום יום במייל</span></div>'
+    +'<div style="display:flex;gap:8px;margin-top:16px;">'
+    +'<button class="btn btn-danger" style="flex:1;" onclick="Sync._doExit()">🚪 צא</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    Stages.showModal(html);
+  },
+
+  async _doExit(){
+    Stages.closeModal();
+    var doUpload=Utils.id('exitUpload')?.classList.contains('checked');
+    var doReport=Utils.id('exitReport')?.classList.contains('checked');
+
+    if(doUpload&&Sync.isSignedIn()){
+      Utils.toast('מעלה נתונים...','info');
+      try{
+        var data=await Sync.exportLocal();
+        await Sync.upload(data);
+        Utils.toast('נתונים הועלו!','success');
+      }catch(e){_dbg('Exit upload err: '+e);Utils.toast('שגיאה בהעלאה','danger');}
+    }
+    if(doReport){
+      DaySummary.prepareCloseDay();
+      return; // Don't close yet — let the user send the report first
+    }
+    // Close app
+    if(navigator.app&&navigator.app.exitApp){
+      navigator.app.exitApp();
+    }else{
+      Utils.toast('לא ניתן לסגור — סגור ידנית','info');
+    }
+  },
+
+  _hash:function(str){
+    var hash=0;
+    for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
+    return hash.toString(36);
+  },
+
+  // v3.2: Prompt on startup
+  _promptStartupSync:function(){
+    var lastSync=App.settings._lastSyncTime||'';
+    Stages.showModal('<div class="modal-title">☁️ סנכרון</div>'
+    +'<div class="info-box">רכז: <strong>'+Utils.escHtml(Sync._currentRecruiter)+'</strong>'
+    +(lastSync?'<br>סנכרון אחרון: '+Utils.formatDateTime(lastSync):'')+'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="Stages.closeModal();Sync.mergeAndSync()">🔄 עדכן מהענן</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">עבוד אופליין</button></div>');
+  },
+
+  // ===== SETTINGS UI =====
+  renderSettings:function(){
+    var signedIn=Sync.isSignedIn();
+    var clientId=App.settings.gdrive_clientId||'';
+    var html='<div class="admin-section"><h3>☁️ סנכרון Google Drive</h3>';
+
+    if(!signedIn){
+      html+='<div class="info-box">חבר את האפליקציה ל-Google Drive לסנכרון בין מכשירים.</div>'
+      +'<div class="form-group"><label class="form-label">Google Client ID</label>'
+      +'<input class="form-input" id="sClientId" dir="ltr" value="'+Utils.escHtml(clientId)+'" '
+      +'placeholder="xxx.apps.googleusercontent.com" '
+      +'onchange="Admin.saveSetting(\'gdrive_clientId\',this.value)"></div>'
+      +'<button class="btn btn-primary" style="width:100%;" onclick="Sync.signIn()">🔑 התחבר ל-Google Drive</button>';
+    }else{
+      var lastSync=App.settings._lastSyncTime||'';
+      html+='<div class="info-box" style="background:#f0fdf4;border-color:#bbf7d0;">'
+      +'✅ מחובר ל-Google Drive'
+      +(lastSync?'<br>סנכרון אחרון: '+Utils.formatDateTime(lastSync):'')+'</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:8px;">'
+      +'<button class="btn btn-primary" style="flex:1;" onclick="Sync.mergeAndSync()">🔄 סנכרן עכשיו</button>'
+      +'<button class="btn btn-outline" style="flex:1;" onclick="Sync.signOut()">🔓 נתק</button></div>';
+    }
+
+    // Recruiter selection
+    html+='<div class="form-group"><label class="form-label">רכז נוכחי (זיהוי מכשיר)</label>'
+    +'<div style="display:flex;gap:8px;align-items:center;">'
+    +'<span style="font-weight:700;">'+(Sync._currentRecruiter||'לא נבחר')+'</span>'
+    +'<button class="btn btn-outline btn-sm" onclick="Sync.showRecruiterSelect()">שנה</button></div></div>';
+
+    html+='</div>';
+    return html;
+  }
+};

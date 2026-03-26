@@ -91,7 +91,10 @@ const Tasks={
         html+='<div class="task-check '+(t.done?'done':'')+'" onclick="Tasks.toggleCustomTask(\''+t.taskId+'\')">'+(t.done?'✓':'○')+'</div>';
       }
       html+='<div class="task-text '+(t.done?'done':'')+'">'+priLabel+Utils.escHtml(t.text)+'</div>';
-      if(!t.system)html+='<button style="background:none;border:none;color:var(--danger);font-size:1.1rem;" onclick="Tasks.deleteTask(\''+t.taskId+'\')">×</button>';
+      if(!t.system){
+        html+='<button style="background:none;border:none;color:var(--accent);font-size:.9rem;flex-shrink:0;" onclick="Tasks.editTask(\''+t.taskId+'\')">✏️</button>';
+        html+='<button style="background:none;border:none;color:var(--danger);font-size:1.1rem;flex-shrink:0;" onclick="Tasks.deleteTask(\''+t.taskId+'\')">×</button>';
+      }
       html+='</div>';
     });
     return html;
@@ -139,6 +142,48 @@ const Tasks={
   },
   async deleteTask(taskId){
     await DB.delTask(taskId);
+    if(Tasks._inTaskView)Tasks.render(App.currentStage);
+    else App.renderStageList(App.currentStage);
+  },
+  // v3.1 #4: Edit existing task
+  async editTask(taskId){
+    var tasks=await DB.getAllTasks();
+    var t=tasks.find(function(x){return x.id===taskId});
+    if(!t)return;
+    var pri=t.priority||'B';
+    var html='<div class="modal-title">✏️ עריכת משימה</div>'
+    +'<div class="form-group"><label class="form-label">תיאור</label>'
+    +'<input class="form-input" id="editTaskText" value="'+Utils.escHtml(t.text)+'"></div>'
+    +'<div class="form-group"><label class="form-label">תאריך ביצוע</label>'
+    +'<input class="form-input" id="editTaskDate" type="date" value="'+(t.date||Utils.today())+'"></div>'
+    +'<div class="form-group"><label class="form-label">שייך לתחנה</label>'
+    +'<select class="form-select" id="editTaskStage">';
+    Utils.STAGES.forEach(function(s){
+      html+='<option value="'+s.id+'"'+(String(s.id)===String(t.stageId)?' selected':'')+'>'+s.icon+' '+s.name+'</option>';
+    });
+    html+='<option value="other"'+(t.stageId==='other'?' selected':'')+'>❗ אחר</option>';
+    html+='</select></div>'
+    +'<div class="form-group"><label class="form-label">תיעדוף</label><div class="radio-group" id="editTaskPri">'
+    +'<div class="radio-btn '+(pri==='A'?'active':'')+'" data-val="A" onclick="Tasks._setPri(this)" style="color:var(--danger);border-color:var(--danger);">A דחוף</div>'
+    +'<div class="radio-btn '+(pri==='B'?'active':'')+'" data-val="B" onclick="Tasks._setPri(this)">B רגיל</div>'
+    +'<div class="radio-btn '+(pri==='C'?'active':'')+'" data-val="C" onclick="Tasks._setPri(this)" style="color:var(--text-light);">C נמוך</div>'
+    +'</div></div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="Tasks.saveEditTask(\''+taskId+'\')">💾 שמור</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    Stages.showModal(html);
+  },
+  async saveEditTask(taskId){
+    var tasks=await DB.getAllTasks();
+    var t=tasks.find(function(x){return x.id===taskId});
+    if(!t)return;
+    t.text=Utils.id('editTaskText')?.value?.trim()||t.text;
+    t.date=Utils.id('editTaskDate')?.value||t.date;
+    t.stageId=Utils.id('editTaskStage')?.value||t.stageId;
+    var priEl=document.querySelector('#editTaskPri .radio-btn.active');
+    if(priEl)t.priority=priEl.dataset.val;
+    await DB.saveTask(t);
+    Stages.closeModal();
     if(Tasks._inTaskView)Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);
   },
