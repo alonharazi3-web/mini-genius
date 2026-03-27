@@ -204,71 +204,129 @@ var Sync={
     var candidates=await DB.getAllCandidates();
     var jobs=await DB.getAllJobs();
     var tasks=await DB.getAllTasks();
-    var settings=await DB.getAllSettings();
-    // Add deleted tombstones
-    var tombstones=[];
-    try{var ts=await DB.getSetting('_tombstones');
-    if(ts)tombstones=JSON.parse(ts);}catch(e){}
-    return{version:1,candidates:candidates,jobs:jobs,tasks:tasks,
-      settings:settings,tombstones:tombstones,
+    return{version:2,candidates:candidates,jobs:jobs,tasks:tasks,
       exportedAt:new Date().toISOString(),
       exportedBy:Sync._currentRecruiter||'unknown'};
   },
 
-  // ===== MERGE — detect conflicts, prompt user =====
-  async mergeAndSync(direction){
+  // ===== LOCAL BACKUP before any sync =====
+  async _saveLocalBackup(){
+    var data=await Sync.exportLocal();
+    var backupStr=JSON.stringify(data);
+    await DB.setSetting('_localBackup',backupStr);
+    await DB.setSetting('_localBackupTime',new Date().toISOString());
+    _dbg('Sync: local backup saved ('+data.candidates.length+' candidates)');
+  },
+
+  // ===== FULL UPLOAD — sends ALL local data to cloud =====
+  async fullUpload(){
+    try{
+      Utils.toast('מעלה נתונים...','info');
+      await Sync._saveLocalBackup();
+      var data=await Sync.exportLocal();
+      var ok=await Sync.upload(data);
+      if(ok)Utils.toast('הועלו '+data.candidates.length+' מועמדים לענן','success');
+      else Utils.toast('שגיאה בהעלאה','danger');
+    }catch(e){
+      _dbg('fullUpload err: '+e);
+      Utils.toast('שגיאת העלאה: '+e.message,'danger');
+    }
+  },
+
+  // ===== FULL DOWNLOAD — replaces local with cloud =====
+  async fullDownload(){
+    try{
+      Utils.toast('מוריד נתונים...','info');
+      await Sync._saveLocalBackup();
+      var remote=await Sync.download();
+      // Replace all local candidates
+      var localAll=await DB.getAllCandidates();
+      for(var i=0;i<localAll.length;i++)await DB.del('candidates',localAll[i].id);
+      for(var i=0;i<(remote.candidates||[]).length;i++){
+        await DB.put('candidates',remote.candidates[i]);
+      }
+      // Replace tasks
+      var localTasks=await DB.getAllTasks();
+      for(var i=0;i<localTasks.length;i++)await DB.del('tasks',localTasks[i].id);
+      for(var i=0;i<(remote.tasks||[]).length;i++){
+        await DB.put('tasks',remote.tasks[i]);
+      }
+      await DB.setSetting('_lastSyncTime',new Date().toISOString());
+      Utils.toast('הורדו '+(remote.candidates||[]).length+' מועמדים מהענן','success');
+      App.settings=await DB.getAllSettings();
+      App.renderStageList(App.currentStage);App.updateBadges();
+    }catch(e){
+      _dbg('fullDownload err: '+e);
+      Utils.toast('שגיאת הורדה: '+e.message,'danger');
+    }
+  },
+
+  // ===== SMART MERGE — compare by ID, auto-merge when possible =====
+  async mergeAndSync(){
     try{
       Utils.toast('מסנכרן...','info');
+      await Sync._saveLocalBackup();
       var local=await Sync.exportLocal();
       var remote=await Sync.download();
+      var lastSync=App.settings._lastSyncTime||'1970-01-01';
 
-      // Build phone→candidate maps
-      var localMap={};local.candidates.forEach(function(c){localMap[c.phone]=c;});
-      var remoteMap={};(remote.candidates||[]).forEach(function(c){remoteMap[c.phone]=c;});
+      // Build ID maps
+      var localMap={};local.candidates.forEach(function(c){localMap[c.id]=c;});
+      var remoteMap={};(remote.candidates||[]).forEach(function(c){remoteMap[c.id]=c;});
 
-      // Detect conflicts and new records
-      var conflicts=[];var autoMerged=[];var newLocal=[];var newRemote=[];
+      var conflicts=[];
+      var merged=[];var mergeStats={kept:0,fromCloud:0,conflicts:0,newLocal:0,newRemote:0};
 
-      // Check all remote candidates
-      (remote.candidates||[]).forEach(function(rc){
-        var lc=localMap[rc.phone];
-        if(!lc){
-          // New from remote
-          newRemote.push(rc);
-        }else if(rc.updatedAt!==lc.updatedAt){
-          // Both exist but different — conflict
-          conflicts.push({local:lc,remote:rc});
+      // Process all unique IDs
+      var allIds={};
+      local.candidates.forEach(function(c){allIds[c.id]=true;});
+      (remote.candidates||[]).forEach(function(c){allIds[c.id]=true;});
+
+      Object.keys(allIds).forEach(function(id){
+        var lc=localMap[id];
+        var rc=remoteMap[id];
+
+        if(lc&&!rc){
+          // Only exists locally — keep it
+          merged.push(lc);mergeStats.newLocal++;
+        }else if(!lc&&rc){
+          // Only exists in cloud — take it
+          merged.push(rc);mergeStats.newRemote++;
+        }else if(lc&&rc){
+          // Exists in both — check which is newer
+          var localChanged=lc.updatedAt>lastSync;
+          var remoteChanged=rc.updatedAt>lastSync;
+
+          if(lc.updatedAt===rc.updatedAt){
+            // Identical — keep local
+            merged.push(lc);mergeStats.kept++;
+          }else if(localChanged&&remoteChanged){
+            // BOTH changed since last sync — REAL conflict
+            conflicts.push({local:lc,remote:rc});
+            mergeStats.conflicts++;
+          }else if(remoteChanged){
+            // Only cloud changed — take cloud
+            merged.push(rc);mergeStats.fromCloud++;
+          }else{
+            // Only local changed (or neither) — keep local
+            merged.push(lc);mergeStats.kept++;
+          }
         }
-        // else identical — skip
       });
 
-      // Check local candidates not in remote
-      local.candidates.forEach(function(lc){
-        if(!remoteMap[lc.phone]){newLocal.push(lc);}
-      });
-
-      // Handle tombstones
-      var remoteTombstones=remote.tombstones||[];
-      var localTombstones=local.tombstones||[];
-      var allTombstones=[].concat(remoteTombstones,localTombstones);
-      // Remove unique duplicates
-      var tombMap={};allTombstones.forEach(function(t){tombMap[t.phone]=t;});
-      allTombstones=Object.values(tombMap);
-
-      _dbg('Sync merge: '+conflicts.length+' conflicts, '+newRemote.length+' new remote, '+newLocal.length+' new local');
+      _dbg('Sync merge: kept='+mergeStats.kept+' fromCloud='+mergeStats.fromCloud+
+        ' newLocal='+mergeStats.newLocal+' newRemote='+mergeStats.newRemote+
+        ' conflicts='+mergeStats.conflicts);
 
       if(conflicts.length){
-        // Show conflict resolution UI
         Sync._conflicts=conflicts;
-        Sync._newLocal=newLocal;
-        Sync._newRemote=newRemote;
+        Sync._merged=merged;
+        Sync._mergeStats=mergeStats;
         Sync._remoteTasks=remote.tasks||[];
         Sync._conflictIdx=0;
-        Sync._resolved=[];
         Sync._showConflict();
       }else{
-        // No conflicts — auto-merge
-        await Sync._applyMerge(newLocal,newRemote,[],remote.tasks||[]);
+        await Sync._finalizeMerge(merged,mergeStats,remote.tasks||[]);
       }
     }catch(e){
       _dbg('Sync err: '+e);
@@ -276,22 +334,19 @@ var Sync={
     }
   },
 
-  _conflicts:[],_newLocal:[],_newRemote:[],_remoteTasks:[],_conflictIdx:0,_resolved:[],
+  _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_conflictIdx:0,
 
   _showConflict:function(){
     var idx=Sync._conflictIdx;
     if(idx>=Sync._conflicts.length){
-      // All resolved — apply
-      Sync._applyMerge(Sync._newLocal,Sync._newRemote,Sync._resolved,Sync._remoteTasks);
+      Sync._finalizeMerge(Sync._merged,Sync._mergeStats,Sync._remoteTasks);
       return;
     }
     var c=Sync._conflicts[idx];var lc=c.local;var rc=c.remote;
-    var html='<div class="modal-title">⚠️ סנכרון — התנגשות '+(idx+1)+'/'+Sync._conflicts.length+'</div>';
+    var html='<div class="modal-title">⚠️ התנגשות '+(idx+1)+'/'+Sync._conflicts.length+'</div>';
     html+='<div style="font-size:1.05rem;font-weight:700;margin-bottom:10px;">'+Utils.escHtml(lc.name||rc.name)+'</div>';
 
-    // Side by side comparison
     html+='<div style="display:flex;gap:8px;">';
-    // Local
     html+='<div style="flex:1;background:#f0f9ff;padding:10px;border-radius:8px;border:2px solid #4A90D9;">'
     +'<div style="font-weight:700;color:#4A90D9;margin-bottom:6px;">📱 מקומי</div>'
     +'<div style="font-size:.78rem;">תחנה: '+Utils.getStageName(lc.stage)+'</div>'
@@ -299,7 +354,6 @@ var Sync={
     +'<div style="font-size:.78rem;">רכז: '+(lc.recruiter||'-')+'</div>'
     +'<div style="font-size:.78rem;">עדכון: '+Utils.formatDateTime(lc.updatedAt)+'</div>'
     +'</div>';
-    // Remote
     html+='<div style="flex:1;background:#fef9f0;padding:10px;border-radius:8px;border:2px solid #F39C12;">'
     +'<div style="font-weight:700;color:#F39C12;margin-bottom:6px;">☁️ ענן</div>'
     +'<div style="font-size:.78rem;">תחנה: '+Utils.getStageName(rc.stage)+'</div>'
@@ -311,54 +365,56 @@ var Sync={
     html+='<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">'
     +'<button class="btn btn-primary" onclick="Sync._resolveConflict(\'local\')">📱 השאר מקומי</button>'
     +'<button class="btn btn-outline" onclick="Sync._resolveConflict(\'remote\')">☁️ קח מהענן</button>'
-    +'<button class="btn btn-outline" style="color:var(--text-light);" onclick="Sync._resolveConflict(\'skip\')">⏭ דלג</button>'
     +'</div>';
     Stages.showModal(html);
   },
 
   _resolveConflict:function(choice){
     var c=Sync._conflicts[Sync._conflictIdx];
-    Sync._resolved.push({local:c.local,remote:c.remote,choice:choice});
+    // Add chosen version to merged list
+    if(choice==='local')Sync._merged.push(c.local);
+    else Sync._merged.push(c.remote);
     Sync._conflictIdx++;
     Stages.closeModal();
     Sync._showConflict();
   },
 
-  async _applyMerge(newLocal,newRemote,resolved,remoteTasks){
-    // Import new remote candidates
-    for(var i=0;i<newRemote.length;i++){
-      var rc=newRemote[i];rc.id=rc.id||'c_sync_'+Date.now()+'_'+i;
-      await DB.saveCandidate(rc);
+  async _finalizeMerge(merged,stats,remoteTasks){
+    // 1. Save ALL merged candidates to local DB
+    var localAll=await DB.getAllCandidates();
+    var localIds={};localAll.forEach(function(c){localIds[c.id]=true;});
+
+    // Add new candidates from cloud
+    for(var i=0;i<merged.length;i++){
+      var c=merged[i];
+      await DB.put('candidates',c);
     }
-    // Apply conflict resolutions
-    for(var i=0;i<resolved.length;i++){
-      var r=resolved[i];
-      if(r.choice==='remote'){
-        r.remote.id=r.local.id; // keep local ID
-        await DB.saveCandidate(r.remote);
-      }
-      // 'local' and 'skip' — keep local as-is
-    }
-    // Merge tasks (add remote tasks not in local)
+
+    // 2. Merge tasks
     var localTasks=await DB.getAllTasks();
-    var localTaskTexts={};localTasks.forEach(function(t){localTaskTexts[t.text+'|'+t.date]=true;});
+    var localTaskIds={};localTasks.forEach(function(t){localTaskIds[t.id]=true;});
     for(var i=0;i<remoteTasks.length;i++){
       var rt=remoteTasks[i];
-      if(!localTaskTexts[rt.text+'|'+rt.date]){
-        rt.id='t_sync_'+Date.now()+'_'+i;
-        await DB.saveTask(rt);
+      if(!localTaskIds[rt.id]){
+        await DB.put('tasks',rt);
       }
     }
-    // Upload merged state
-    var merged=await Sync.exportLocal();
-    // Add new local candidates to merged
-    await Sync.upload(merged);
 
-    Utils.toast('סנכרון הושלם! '+newRemote.length+' חדשים, '+resolved.length+' נפתרו','success');
-    _dbg('Sync: merge complete');
+    // 3. Upload COMPLETE merged state to cloud
+    var fullData=await Sync.exportLocal();
+    await Sync.upload(fullData);
+
+    // 4. Update last sync time
+    await DB.setSetting('_lastSyncTime',new Date().toISOString());
+
+    var msg='סנכרון הושלם: '+fullData.candidates.length+' מועמדים';
+    if(stats.newRemote)msg+=' ('+stats.newRemote+' חדשים מענן)';
+    if(stats.conflicts)msg+=' ('+stats.conflicts+' התנגשויות נפתרו)';
+    Utils.toast(msg,'success');
+    _dbg('Sync finalized: '+fullData.candidates.length+' total candidates uploaded');
+
     App.settings=await DB.getAllSettings();
-    App.renderStageList(App.currentStage);
-    App.updateBadges();
+    App.renderStageList(App.currentStage);App.updateBadges();
   },
 
   // ===== AUTO TIMERS =====
@@ -368,7 +424,7 @@ var Sync={
     Sync._autoUploadTimer=setInterval(function(){
       if(Sync.isSignedIn()){
         _dbg('Sync: auto-upload (30min)');
-        Sync.exportLocal().then(function(d){Sync.upload(d);}).catch(function(e){_dbg('Auto-upload err: '+e);});
+        Sync.fullUpload().catch(function(e){_dbg('Auto-upload err: '+e);});
       }
     },30*60*1000);
     // Check for changes every 60 min
@@ -423,9 +479,7 @@ var Sync={
     if(doUpload&&Sync.isSignedIn()){
       Utils.toast('מעלה נתונים...','info');
       try{
-        var data=await Sync.exportLocal();
-        await Sync.upload(data);
-        Utils.toast('נתונים הועלו!','success');
+        await Sync.fullUpload();
       }catch(e){_dbg('Exit upload err: '+e);Utils.toast('שגיאה בהעלאה','danger');}
     }
     if(doReport){
@@ -477,12 +531,18 @@ var Sync={
       +'<button class="btn btn-primary" style="width:100%;" onclick="Sync.signIn()">🔑 התחבר ל-Google Drive</button>';
     }else{
       var lastSync=App.settings._lastSyncTime||'';
+      var backupTime=App.settings._localBackupTime||'';
       html+='<div class="info-box" style="background:#f0fdf4;border-color:#bbf7d0;">'
       +'✅ מחובר ל-Google Drive'
-      +(lastSync?'<br>סנכרון אחרון: '+Utils.formatDateTime(lastSync):'')+'</div>'
-      +'<div style="display:flex;gap:8px;margin-bottom:8px;">'
-      +'<button class="btn btn-primary" style="flex:1;" onclick="Sync.mergeAndSync()">🔄 סנכרן עכשיו</button>'
-      +'<button class="btn btn-outline" style="flex:1;" onclick="Sync.signOut()">🔓 נתק</button></div>';
+      +(lastSync?'<br>סנכרון אחרון: '+Utils.formatDateTime(lastSync):'')
+      +(backupTime?'<br>גיבוי מקומי: '+Utils.formatDateTime(backupTime):'')+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">'
+      +'<button class="btn btn-primary" style="width:100%;" onclick="Sync.mergeAndSync()">🔄 סנכרן (מיזוג חכם)</button>'
+      +'<div style="display:flex;gap:8px;">'
+      +'<button class="btn btn-outline" style="flex:1;" onclick="Sync.fullUpload()">⬆️ העלה הכל</button>'
+      +'<button class="btn btn-outline" style="flex:1;" onclick="if(confirm(\'זה יחליף את כל הנתונים המקומיים!\\nלהמשיך?\'))Sync.fullDownload()">⬇️ הורד הכל</button></div>'
+      +'<button class="btn btn-outline" style="width:100%;" onclick="Sync.signOut()">🔓 נתק מ-Google Drive</button>'
+      +'</div>';
     }
 
     // Recruiter selection
