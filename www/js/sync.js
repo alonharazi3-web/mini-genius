@@ -466,6 +466,8 @@ var Sync={
         +'<div style="display:flex;gap:8px;margin-top:12px;">'
         +'<button class="btn btn-primary" style="flex:1;" onclick="Stages.closeModal();Sync.mergeAndSync()">🔄 עדכן</button>'
         +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">לא עכשיו</button></div>');
+      }else{
+        Utils.toast('✅ אין שינויים חדשים בענן','success');
       }
     }catch(e){_dbg('Check remote err: '+e);}
   },
@@ -552,6 +554,7 @@ var Sync={
       +'<div style="display:flex;gap:8px;">'
       +'<button class="btn btn-outline" style="flex:1;" onclick="Sync.fullUpload()">⬆️ העלה הכל</button>'
       +'<button class="btn btn-outline" style="flex:1;" onclick="if(confirm(\'זה יחליף את כל הנתונים המקומיים!\\nלהמשיך?\'))Sync.fullDownload()">⬇️ הורד הכל</button></div>'
+      +'<button class="btn btn-outline" style="width:100%;" onclick="Sync._checkRemoteChanges()">🔍 בדוק עדכונים מהענן</button>'
       +'<button class="btn btn-outline" style="width:100%;" onclick="Sync.signOut()">🔓 נתק מ-Google Drive</button>'
       +'</div>';
     }

@@ -251,8 +251,34 @@ const Admin={
           }
         }
         App.settings=await DB.getAllSettings();
-        _dbg('Import done: '+JSON.stringify(counts));
-        Utils.toast('ייבוא הושלם! '+counts.candidates+' מועמדים, '+counts.settings+' הגדרות','success');
+        // Import events if present
+        if(data.events){for(var i=0;i<data.events.length;i++){await DB.put('events',data.events[i]);}}
+        // v3.3: Auto-create calendar events from imported candidates with dates
+        var calCount=0;
+        if(data.candidates){
+          for(var i=0;i<data.candidates.length;i++){
+            var c=data.candidates[i];
+            for(var si=1;si<=7;si++){
+              var dateField=si===3?'stage3_examDate':('stage'+si+'_date');
+              var d=c[dateField];
+              if(d){
+                var time=c['stage'+si+'_time']||'09:00';
+                var dur=Calendar.STAGE_DURATIONS[si];
+                var isDayTitle=(dur===null);
+                var existing=await DB.getEventsByDate(d);
+                var already=existing.some(function(ev){return ev.candidateId===c.id&&ev.title.indexOf(Utils.getStageName(si))>=0;});
+                if(!already){
+                  await Calendar.createFromCandidate(c.id,Utils.getStageName(si),d,time,si);
+                  calCount++;
+                }
+              }
+            }
+          }
+        }
+        _dbg('Import done: '+JSON.stringify(counts)+', calendar: '+calCount);
+        var msg='ייבוא הושלם! '+counts.candidates+' מועמדים';
+        if(calCount)msg+=', '+calCount+' אירועים נוספו ליומן';
+        Utils.toast(msg,'success');
         Admin.render();
       }catch(err){Utils.toast('שגיאה בייבוא: '+err,'danger');_dbg('Import err:'+err);}
     };
