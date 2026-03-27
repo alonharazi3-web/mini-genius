@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mini Genius — אימות</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;direction:rtl;background:#EEF2F7;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:#fff;border-radius:16px;padding:30px;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}
+h1{color:#1B2A4A;font-size:1.3rem;margin-bottom:12px}
+.icon{font-size:3rem;margin-bottom:16px}
+.token-box{background:#f0f0f0;border:2px solid #ddd;border-radius:8px;padding:12px;word-break:break-all;font-family:monospace;font-size:.7rem;direction:ltr;text-align:left;margin:16px 0;max-height:80px;overflow-y:auto;cursor:pointer}
+.token-box.copied{border-color:#2ECC71;background:#f0fdf4}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:10px}
+.btn-primary{background:#4A90D9;color:#fff}
+.btn-success{background:#2ECC71;color:#fff}
+.info{color:#7F8C8D;font-size:.85rem;margin-top:16px;line-height:1.6}
+.error{color:#E74C3C;margin:16px 0}
+.steps{text-align:right;margin:16px 0;font-size:.88rem;line-height:2}
+</style>
+</head>
+<body>
+<div class="card" id="content">
+<div class="icon">⏳</div>
+<h1>מעבד אימות...</h1>
+</div>
+
+<script>
+(function(){
+  var hash=window.location.hash.substring(1);
+  var params={};
+  hash.split('&').forEach(function(p){var kv=p.split('=');if(kv[0])params[kv[0]]=decodeURIComponent(kv[1]||'');});
+  var card=document.getElementById('content');
+
+  if(params.access_token){
+    var token=params.access_token;
+    card.innerHTML='<div class="icon">✅</div>'
+    +'<h1>אימות הצליח!</h1>'
+    +'<div class="steps">1. לחץ על הטוקן כדי להעתיק<br>2. חזור לאפליקציה<br>3. הדבק בשדה הטוקן</div>'
+    +'<div class="token-box" id="tokenBox" onclick="copyToken()">'+token+'</div>'
+    +'<button class="btn btn-primary" id="copyBtn" onclick="copyToken()">📋 העתק טוקן</button>'
+    +'<div class="info">הטוקן תקף לשעה אחת. חזור ל-Mini Genius והדבק אותו.</div>';
+
+    window.copyToken=function(){
+      var box=document.getElementById('tokenBox');
+      var btn=document.getElementById('copyBtn');
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(token).then(function(){
+          box.classList.add('copied');
+          btn.textContent='✅ הועתק!';
+          btn.className='btn btn-success';
+        });
+      }else{
+        // Fallback
+        var ta=document.createElement('textarea');
+        ta.value=token;ta.style.position='fixed';ta.style.left='-9999px';
+        document.body.appendChild(ta);ta.select();
+        document.execCommand('copy');document.body.removeChild(ta);
+        box.classList.add('copied');
+        btn.textContent='✅ הועתק!';
+        btn.className='btn btn-success';
+      }
+    };
+  }else if(params.error){
+    card.innerHTML='<div class="icon">❌</div>'
+    +'<h1>אימות נכשל</h1>'
+    +'<div class="error">'+params.error+'</div>'
+    +'<div class="info">'+(params.error_description||'נסה שוב מהאפליקציה')+'</div>';
+  }else{
+    card.innerHTML='<div class="icon">❓</div>'
+    +'<h1>לא נמצא טוקן</h1>'
+    +'<div class="info">נסה שוב מהאפליקציה — לחץ "התחבר ל-Google Drive"</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -91,9 +91,12 @@ const Tasks={
         html+='<div class="task-check '+(t.done?'done':'')+'" onclick="Tasks.toggleCustomTask(\''+t.taskId+'\')">'+(t.done?'✓':'○')+'</div>';
       }
       html+='<div class="task-text '+(t.done?'done':'')+'">'+priLabel+Utils.escHtml(t.text)+'</div>';
-      if(!t.system){
-        html+='<button style="background:none;border:none;color:var(--accent);font-size:.9rem;flex-shrink:0;" onclick="Tasks.editTask(\''+t.taskId+'\')">✏️</button>';
-        html+='<button style="background:none;border:none;color:var(--danger);font-size:1.1rem;flex-shrink:0;" onclick="Tasks.deleteTask(\''+t.taskId+'\')">×</button>';
+      // Edit button on ALL tasks
+      if(t.system){
+        html+='<button style="background:none;border:none;color:var(--accent);font-size:.85rem;flex-shrink:0;" onclick="event.stopPropagation();Tasks.editSystemTask(\''+Utils.escHtml(t.text).replace(/'/g,"\\'")+'\',\''+t.stageId+'\')">✏️</button>';
+      }else{
+        html+='<button style="background:none;border:none;color:var(--accent);font-size:.85rem;flex-shrink:0;" onclick="event.stopPropagation();Tasks.editTask(\''+t.taskId+'\')">✏️</button>';
+        html+='<button style="background:none;border:none;color:var(--danger);font-size:1.1rem;flex-shrink:0;" onclick="event.stopPropagation();Tasks.deleteTask(\''+t.taskId+'\')">×</button>';
       }
       html+='</div>';
     });
@@ -183,6 +186,44 @@ const Tasks={
     var priEl=document.querySelector('#editTaskPri .radio-btn.active');
     if(priEl)t.priority=priEl.dataset.val;
     await DB.saveTask(t);
+    Stages.closeModal();
+    if(Tasks._inTaskView)Tasks.render(App.currentStage);
+    else App.renderStageList(App.currentStage);
+  },
+  // Edit system (auto-generated) task — saves as manual task
+  async editSystemTask(text,stageId){
+    var pri='B';
+    var html='<div class="modal-title">✏️ עריכת משימה</div>'
+    +'<div class="form-group"><label class="form-label">תיאור</label>'
+    +'<input class="form-input" id="editTaskText" value="'+Utils.escHtml(text)+'"></div>'
+    +'<div class="form-group"><label class="form-label">תאריך ביצוע</label>'
+    +'<input class="form-input" id="editTaskDate" type="date" value="'+Utils.today()+'"></div>'
+    +'<div class="form-group"><label class="form-label">שייך לתחנה</label>'
+    +'<select class="form-select" id="editTaskStage">';
+    Utils.STAGES.forEach(function(s){
+      html+='<option value="'+s.id+'"'+(String(s.id)===String(stageId)?' selected':'')+'>'+s.icon+' '+s.name+'</option>';
+    });
+    html+='<option value="other">❗ אחר</option>';
+    html+='</select></div>'
+    +'<div class="form-group"><label class="form-label">תיעדוף</label><div class="radio-group" id="editTaskPri">'
+    +'<div class="radio-btn" data-val="A" onclick="Tasks._setPri(this)" style="color:var(--danger);border-color:var(--danger);">A דחוף</div>'
+    +'<div class="radio-btn active" data-val="B" onclick="Tasks._setPri(this)">B רגיל</div>'
+    +'<div class="radio-btn" data-val="C" onclick="Tasks._setPri(this)" style="color:var(--text-light);">C נמוך</div>'
+    +'</div></div>'
+    +'<div class="info-box" style="font-size:.78rem;">משימה אוטומטית תישמר כמשימה ידנית עם תאריך ותיעדוף</div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="Tasks.saveSystemAsManual()">💾 שמור</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    Stages.showModal(html);
+  },
+  async saveSystemAsManual(){
+    var text=Utils.id('editTaskText')?.value?.trim();
+    var date=Utils.id('editTaskDate')?.value||Utils.today();
+    var stageId=Utils.id('editTaskStage')?.value||'other';
+    var priEl=document.querySelector('#editTaskPri .radio-btn.active');
+    var pri=priEl?priEl.dataset.val:'B';
+    if(!text){Utils.toast('נא למלא תיאור','danger');return;}
+    await DB.saveTask({text:text,date:date,stageId:stageId,done:false,priority:pri});
     Stages.closeModal();
     if(Tasks._inTaskView)Tasks.render(App.currentStage);
     else App.renderStageList(App.currentStage);

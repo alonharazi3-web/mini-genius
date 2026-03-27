@@ -39,14 +39,13 @@ var Sync={
     Utils.toast('רכז: '+name,'success');
   },
 
-  // ===== GOOGLE SIGN-IN via InAppBrowser =====
+  // ===== GOOGLE SIGN-IN — opens Chrome (not WebView) =====
   async signIn(){
     var clientId=App.settings.gdrive_clientId||'';
     if(!clientId){Utils.toast('הגדר Client ID בהגדרות סנכרון','danger');return;}
-    _dbg('Sync: starting OAuth...');
+    _dbg('Sync: starting OAuth via system browser...');
 
-    // Build OAuth URL — implicit grant flow
-    var redirectUri='https://localhost/callback';
+    var redirectUri='https://alonharazi3-web.github.io/mini-genius/oauth.html';
     var scope='https://www.googleapis.com/auth/drive.file';
     var url='https://accounts.google.com/o/oauth2/v2/auth'
     +'?client_id='+encodeURIComponent(clientId)
@@ -55,49 +54,48 @@ var Sync={
     +'&scope='+encodeURIComponent(scope)
     +'&prompt=consent';
 
+    // Open in SYSTEM browser (Chrome) — Google blocks WebView
     if(window.cordova&&window.cordova.InAppBrowser){
-      var iab=cordova.InAppBrowser.open(url,'_blank','location=yes,clearsessioncache=yes,clearcache=yes');
-      iab.addEventListener('loadstart',function(event){
-        if(event.url.indexOf(redirectUri)===0){
-          iab.close();
-          Sync._handleOAuthRedirect(event.url);
-        }
-      });
-      iab.addEventListener('loaderror',function(event){
-        if(event.url.indexOf(redirectUri)===0){
-          iab.close();
-          Sync._handleOAuthRedirect(event.url);
-        }
-      });
+      cordova.InAppBrowser.open(url,'_system');
     }else{
-      // Browser fallback
-      Utils.toast('InAppBrowser לא זמין — נדרש Cordova','danger');
+      window.open(url,'_blank');
     }
+
+    // Show paste dialog — user will copy token from Chrome
+    setTimeout(function(){
+      Sync._showTokenPasteDialog();
+    },2000);
   },
 
-  async _handleOAuthRedirect(url){
-    _dbg('Sync: OAuth redirect: '+url.substring(0,80));
-    var hash=url.split('#')[1]||'';
-    var params={};
-    hash.split('&').forEach(function(p){var kv=p.split('=');params[kv[0]]=decodeURIComponent(kv[1]||'');});
+  _showTokenPasteDialog:function(){
+    var html='<div class="modal-title">🔑 הדבק טוקן</div>'
+    +'<div class="info-box">1. היכנס עם Google בכרום<br>2. אשר גישה<br>3. העתק את הטוקן שמופיע<br>4. חזור לכאן והדבק</div>'
+    +'<div class="form-group"><label class="form-label">טוקן גישה</label>'
+    +'<input class="form-input" id="pasteToken" dir="ltr" placeholder="הדבק כאן..." style="font-size:.8rem;"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="Sync._applyPastedToken()">✅ אישור</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    Stages.showModal(html);
+  },
 
-    if(params.access_token){
-      Sync._token=params.access_token;
-      var expiresIn=parseInt(params.expires_in)||3600;
-      Sync._tokenExpiry=Date.now()+(expiresIn*1000);
-      // Save token
-      await DB.setSetting('gdrive_token',Sync._token);
-      await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
-      App.settings.gdrive_token=Sync._token;
-      App.settings.gdrive_tokenExpiry=String(Sync._tokenExpiry);
-      _dbg('Sync: signed in, token expires in '+expiresIn+'s');
-      Utils.toast('מחובר ל-Google Drive!','success');
-      // Find or create sync file
+  async _applyPastedToken(){
+    var token=(Utils.id('pasteToken')?.value||'').trim();
+    if(!token||token.length<20){Utils.toast('טוקן לא תקין','danger');return;}
+    Sync._token=token;
+    Sync._tokenExpiry=Date.now()+(3600*1000); // 1 hour
+    await DB.setSetting('gdrive_token',token);
+    await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
+    App.settings.gdrive_token=token;
+    App.settings.gdrive_tokenExpiry=String(Sync._tokenExpiry);
+    Stages.closeModal();
+    Utils.toast('מתחבר...','info');
+    try{
       await Sync._findOrCreateSyncFile();
       Sync._startTimers();
-    }else{
-      _dbg('Sync: OAuth failed — no token');
-      Utils.toast('כניסה נכשלה','danger');
+      Utils.toast('מחובר ל-Google Drive!','success');
+    }catch(e){
+      _dbg('Token apply err: '+e);
+      Utils.toast('טוקן לא תקף — נסה שוב','danger');
     }
   },
 
@@ -431,8 +429,13 @@ var Sync={
       }catch(e){_dbg('Exit upload err: '+e);Utils.toast('שגיאה בהעלאה','danger');}
     }
     if(doReport){
+      // Open the full day close flow (same as סגירת יום)
       DaySummary.prepareCloseDay();
-      return; // Don't close yet — let the user send the report first
+      // After sending, allow app to close
+      setTimeout(function(){
+        if(navigator.app&&navigator.app.exitApp)navigator.app.exitApp();
+      },120000); // auto-close after 2 min if user doesn't act
+      return;
     }
     // Close app
     if(navigator.app&&navigator.app.exitApp){
