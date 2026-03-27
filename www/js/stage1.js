@@ -24,6 +24,14 @@ const Stage1={
     +'<div class="radio-btn" data-val="high" onclick="Stage1._sp(this);Stage1._saveDraft()">🔴 גבוה</div>'
     +'<div class="radio-btn active" data-val="medium" onclick="Stage1._sp(this);Stage1._saveDraft()">🟠 בינוני</div>'
     +'<div class="radio-btn" data-val="low" onclick="Stage1._sp(this);Stage1._saveDraft()">🟢 נמוך</div></div></div>'
+    +'<div class="form-group"><label class="form-label">סוג מומלץ</label>'
+    +'<div class="radio-group" id="fRec">'
+    +'<div class="radio-btn active" data-val="" onclick="Stage1._sp(this);Stage1._saveDraft()">ללא</div>'
+    +'<div class="radio-btn" data-val="recommended" onclick="Stage1._sp(this);Stage1._saveDraft()">⭐</div>'
+    +'<div class="radio-btn" data-val="unit" onclick="Stage1._sp(this);Stage1._saveDraft()">🥈</div>'
+    +'<div class="radio-btn" data-val="eitan" onclick="Stage1._sp(this);Stage1._saveDraft()">🥇</div>'
+    +'<div class="radio-btn" data-val="employee" onclick="Stage1._sp(this);Stage1._saveDraft()">🪪</div>'
+    +'</div></div>'
     +'<div class="form-group"><label class="form-label">תזכורת לשיחה</label>'
     +'<input class="form-input" id="fReminder" type="datetime-local" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">רכז מטפל <span class="required">*</span></label>'
@@ -66,8 +74,11 @@ const Stage1={
     if(!recruiter){Utils.toast('נא לבחור רכז','danger');return;}
     var priority='medium';var active=document.querySelector('#fPriority .radio-btn.active');
     if(active)priority=active.dataset.val;
+    var recEl=document.querySelector('#fRec .radio-btn.active');
+    var recommendation=recEl?recEl.dataset.val:'';
     var c={name:name,phone:phone,stage:1,status:'active',priority:priority,
       referrer:Utils.id('fReferrer')?.value||'',notes:Utils.id('fNotes')?.value||'',
+      recommendation:recommendation,
       recruiter:recruiter,jobId:App.currentJob,stageEnteredAt:new Date().toISOString()};
     // CV file
     if(Stage1._cvData){
@@ -77,9 +88,12 @@ const Stage1={
     c=await DB.saveCandidate(c);
     if(Stage1._cvData&&c.cvFileId){var f=await DB.getFile(c.cvFileId);f.candidateId=c.id;await DB.saveFile(f);}
     DB.logAction('מועמד חדש',c.name);
-    // Reminder
+    // Calendar reminder
     var rem=Utils.id('fReminder')?.value;
-    if(rem){var parts=rem.split('T');Utils.scheduleReminder('התקשר ל'+name,parts[0],parts[1]);}
+    if(rem){
+      var parts=rem.split('T');
+      Calendar.createFromCandidate(c.id,'שיחה — '+name,parts[0],parts[1]||'09:00',1);
+    }
     Stage1._cvData=null;Stage1._cvName=null;
     Stage1._clearDraft(); // FIX #1 v2.5: clear draft on save
     Utils.toast('מועמד נשמר! 🎉','success');App.navigate('stage',1);
@@ -97,23 +111,23 @@ const Stage1={
     +'</div>';
     if(c.notes)html+='<div class="card-meta" style="margin-top:6px;">הערות: '+Utils.escHtml(c.notes)+'</div>';
     html+='</div>';
-    // Reminder
+    // Reminder → Calendar
     html+='<div style="padding:6px 14px;">'
-    +'<button class="btn btn-outline btn-sm" onclick="Stage1.setReminder(\''+c.id+'\')">🔔 הוסף תזכורת</button></div>';
+    +'<button class="btn btn-outline btn-sm" onclick="Stage1.addToCalendar(\''+c.id+'\')">📅 הוסף תזכורת ליומן</button></div>';
     html+=Stages.renderEvaluation(c,1);
     return html;
   },
-  setReminder(id){
-    var html='<div class="modal-title">🔔 הוספת תזכורת</div>'
+  addToCalendar(id){
+    var html='<div class="modal-title">📅 הוספה ליומן</div>'
     +'<div class="form-group"><label class="form-label">תאריך ושעה</label>'
     +'<input class="form-input" id="remDateTime" type="datetime-local"></div>'
-    +'<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="Stage1.confirmReminder(\''+id+'\')">'+'הוסף</button>';
+    +'<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="Stage1._confirmCalendar(\''+id+'\')">📅 הוסף</button>';
     Stages.showModal(html);
   },
-  async confirmReminder(id){
+  async _confirmCalendar(id){
     var dt=Utils.id('remDateTime')?.value;if(!dt){Utils.toast('בחר תאריך','danger');return;}
     var c=await DB.getCandidate(id);var parts=dt.split('T');
-    Utils.scheduleReminder('התקשר ל'+c.name,parts[0],parts[1]);
+    await Calendar.createFromCandidate(id,'שיחה',parts[0],parts[1]||'09:00',1);
     Stages.closeModal();
   },
   async openCv(id){

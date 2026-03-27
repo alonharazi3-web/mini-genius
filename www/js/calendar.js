@@ -32,21 +32,13 @@ var Calendar={
     setInterval(function(){Calendar._checkReminders();},60000);
   },
 
-  // ===== WEEKLY VIEW =====
+  // ===== WEEKLY VIEW — Vertical day cards =====
   async render(){
     var ws=Calendar._weekStart;
     var weekDates=[];
     for(var d=0;d<5;d++){var dt=new Date(ws);dt.setDate(ws.getDate()+d);weekDates.push(dt);}
     var monthStr=weekDates[2].toLocaleDateString('he-IL',{month:'long',year:'numeric'});
     var weekNum=Calendar._getWeekNumber(weekDates[0]);
-
-    var allEvents=[];
-    for(var d=0;d<5;d++){
-      var dateStr=Calendar._dateStr(weekDates[d]);
-      var dayEvents=await DB.getEventsByDate(dateStr);
-      dayEvents.forEach(function(ev){ev._dayIdx=d;});
-      allEvents=allEvents.concat(dayEvents);
-    }
 
     var page=Utils.id('mainContent');
     var html='<div class="page active">';
@@ -64,75 +56,69 @@ var Calendar={
     +'<input type="file" id="icsImportFile" accept="*/*" style="display:none" onchange="Calendar._processIcsImport(this)">'
     +'</div>';
 
-    // Grid
-    html+='<div style="padding:0 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;">';
-    html+='<div style="display:grid;grid-template-columns:36px repeat(5,1fr);min-width:340px;">';
-
-    // Day headers with holiday/title
-    html+='<div></div>';
+    // 5 day cards — vertical layout like the planner image
     for(var d=0;d<5;d++){
       var dt=weekDates[d];var dStr=Calendar._dateStr(dt);
       var isToday=dStr===Calendar._dateStr(new Date());
       var holiday=Calendar.HOLIDAYS[dStr]||'';
-      // Day titles (events marked as dayTitle)
-      var dayTitles=allEvents.filter(function(ev){return ev._dayIdx===d&&ev.dayTitle;});
-      var titleText=dayTitles.map(function(ev){return ev.title;}).join(', ');
-      if(holiday)titleText=holiday+(titleText?', '+titleText:'');
+      var dayEvents=await DB.getEventsByDate(dStr);
+      var titles=dayEvents.filter(function(ev){return ev.dayTitle;});
+      var timed=dayEvents.filter(function(ev){return!ev.dayTitle;});
+      timed.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
 
-      html+='<div style="text-align:center;padding:4px 2px;font-size:.65rem;font-weight:700;'
-      +'background:'+Calendar._DAY_COLORS[d]+';border-radius:6px 6px 0 0;'
-      +(isToday?'border:2px solid var(--accent);':'')
-      +'">'+Calendar._DAY_NAMES[d]+'<br><span style="font-size:.8rem;">'+dt.getDate()+'</span>';
-      if(titleText)html+='<br><span style="font-size:.55rem;color:#555;font-weight:400;">'+Utils.escHtml(titleText)+'</span>';
-      html+='</div>';
-    }
+      // Check overlaps
+      var overlapPairs=Calendar._findOverlaps(timed);
 
-    // Hour rows
-    for(var h=Calendar._HOURS_START;h<Calendar._HOURS_END;h++){
-      html+='<div style="font-size:.6rem;color:var(--text-light);text-align:left;padding:1px 2px 0;height:40px;border-top:1px solid #eee;">'+('0'+h).slice(-2)+'</div>';
-      for(var d=0;d<5;d++){
-        var cellDate=Calendar._dateStr(weekDates[d]);
-        var cellEvents=allEvents.filter(function(ev){return ev._dayIdx===d&&!ev.dayTitle&&Calendar._eventInHour(ev,h);});
-        var bgColor=Calendar._DAY_COLORS[d]+'30';
-        // Overlap detection
-        var hasOverlap=Calendar._detectOverlap(cellEvents);
-        html+='<div style="height:40px;border-top:1px solid #eee;border-left:1px solid #f0f0f0;background:'+bgColor+';position:relative;cursor:pointer;'
-        +(hasOverlap?'outline:2px solid var(--danger);outline-offset:-2px;':'')
-        +'" onclick="Calendar.addEvent(\''+cellDate+'\',\''+('0'+h).slice(-2)+':00\')">';
-        cellEvents.forEach(function(ev,ei){
-          var evColor=ev.color||'#4A90D9';
-          var attend=Calendar.ATTEND[ev.attendance]||'';
-          var topOff=ei*14;
-          html+='<div onclick="event.stopPropagation();Calendar.viewEvent(\''+ev.id+'\')" style="position:absolute;left:1px;right:1px;top:'+topOff+'px;'
-          +'background:'+evColor+';color:#fff;border-radius:3px;padding:1px 3px;font-size:.52rem;overflow:hidden;'
-          +'white-space:nowrap;text-overflow:ellipsis;z-index:'+(2+ei)+';cursor:pointer;line-height:1.3;'
-          +'opacity:'+(ei>0?'.85':'1')+';">'
-          +attend+(ev.time?ev.time.substring(0,5)+' ':'')+Utils.escHtml(ev.title||'')+'</div>';
-        });
-        html+='</div>';
+      // Day card
+      html+='<div style="margin:0 10px 10px;border-radius:12px;overflow:hidden;'
+      +(isToday?'border:2px solid var(--accent);box-shadow:0 2px 12px rgba(74,144,217,.2);':'border:1px solid #ddd;')
+      +'">';
+      // Day header
+      html+='<div style="background:'+Calendar._DAY_COLORS[d]+';padding:8px 12px;display:flex;align-items:center;gap:8px;">'
+      +'<div style="font-weight:700;font-size:.95rem;">'+Calendar._DAY_NAMES[d]+'</div>'
+      +'<div style="font-size:.85rem;">'+dt.getDate()+'/'+(dt.getMonth()+1)+'</div>'
+      +(isToday?'<span style="background:var(--accent);color:#fff;font-size:.65rem;padding:2px 8px;border-radius:10px;">היום</span>':'')
+      +'<div style="flex:1;"></div>'
+      +'<button style="background:none;border:none;font-size:1rem;cursor:pointer;" onclick="Calendar.addEvent(\''+dStr+'\')">➕</button>'
+      +'</div>';
+
+      // Holiday/titles
+      if(holiday||titles.length){
+        var titleParts=[];
+        if(holiday)titleParts.push('🕎 '+holiday);
+        titles.forEach(function(t){titleParts.push(Utils.escHtml(t.title));});
+        html+='<div style="padding:4px 12px;background:'+Calendar._DAY_COLORS[d]+'60;font-size:.78rem;color:#555;">'
+        +titleParts.join(' | ')+'</div>';
       }
-    }
-    html+='</div></div>';
 
-    // Today's events
-    var todayStr=Calendar._dateStr(new Date());
-    var todayEvents=await DB.getEventsByDate(todayStr);
-    todayEvents=todayEvents.filter(function(ev){return!ev.dayTitle;});
-    if(todayEvents.length){
-      html+='<div style="padding:10px 14px;"><div class="section-title">📌 אירועי היום</div>';
-      todayEvents.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
-      todayEvents.forEach(function(ev){
-        var attend=Calendar.ATTEND[ev.attendance]||'';
-        html+='<div class="card" onclick="Calendar.viewEvent(\''+ev.id+'\')" style="border-right:4px solid '+(ev.color||'#4A90D9')+';">'
-        +'<div style="font-weight:700;font-size:.85rem;">'+attend+(ev.time||'')+' — '+Utils.escHtml(ev.title)+'</div>';
-        if(ev.timeEnd)html+='<div class="card-meta">עד '+ev.timeEnd+'</div>';
-        if(ev.room)html+='<div class="card-meta">📍 '+Utils.escHtml(ev.room)+'</div>';
-        if(ev.participants)html+='<div class="card-meta">👥 '+Utils.escHtml(ev.participants)+'</div>';
-        if(ev.candidateName)html+='<div class="card-meta">👤 '+Utils.escHtml(ev.candidateName)+'</div>';
-        html+='</div>';
-      });
-      html+='</div>';
+      // Events list
+      html+='<div style="background:#fff;min-height:40px;padding:6px 0;">';
+      if(!timed.length){
+        html+='<div style="text-align:center;color:var(--text-light);font-size:.8rem;padding:12px;">אין אירועים</div>';
+      }else{
+        timed.forEach(function(ev){
+          var attend=Calendar.ATTEND[ev.attendance]||'';
+          var hasOverlap=overlapPairs[ev.id]||false;
+          html+='<div onclick="Calendar.viewEvent(\''+ev.id+'\')" style="display:flex;gap:8px;padding:6px 12px;cursor:pointer;'
+          +'border-right:4px solid '+(ev.color||'#4A90D9')+';'
+          +(hasOverlap?'background:#fff0f0;':'')
+          +'border-bottom:1px solid #f5f5f5;">';
+          // Time column
+          html+='<div style="min-width:55px;font-size:.78rem;font-weight:600;color:'+( ev.color||'#4A90D9')+';">'
+          +(ev.time||'')+(ev.timeEnd?'<br><span style="font-size:.65rem;color:var(--text-light);">'+ev.timeEnd+'</span>':'')+'</div>';
+          // Content
+          html+='<div style="flex:1;min-width:0;">'
+          +'<div style="font-weight:600;font-size:.85rem;">'+attend+Utils.escHtml(ev.title)+'</div>';
+          if(ev.candidateName)html+='<div style="font-size:.75rem;color:var(--text-light);">👤 '+Utils.escHtml(ev.candidateName)+'</div>';
+          if(ev.room)html+='<div style="font-size:.75rem;color:var(--text-light);">📍 '+Utils.escHtml(ev.room)+'</div>';
+          if(ev.participants)html+='<div style="font-size:.75rem;color:var(--text-light);">👥 '+Utils.escHtml(ev.participants)+'</div>';
+          if(hasOverlap)html+='<div style="font-size:.65rem;color:var(--danger);">⚠️ חפיפה בזמנים</div>';
+          html+='</div></div>';
+        });
+      }
+      html+='</div></div>'; // events + card
     }
+
     html+='</div>';page.innerHTML=html;
   },
 
@@ -398,6 +384,18 @@ var Calendar={
         if(aS<bE&&bS<aE)return true;
       }
     }return false;
+  },
+  _findOverlaps:function(events){
+    var map={};
+    for(var i=0;i<events.length;i++){
+      for(var j=i+1;j<events.length;j++){
+        var a=events[i],b=events[j];
+        if(!a.time||!b.time)continue;
+        var aS=a.time,aE=a.timeEnd||Calendar._addMin(a.time,30);
+        var bS=b.time,bE=b.timeEnd||Calendar._addMin(b.time,30);
+        if(aS<bE&&bS<aE){map[a.id]=true;map[b.id]=true;}
+      }
+    }return map;
   },
   _addMin:function(t,m){var p=t.split(':');var h=parseInt(p[0]);var mi=parseInt(p[1]||0)+m;while(mi>=60){h++;mi-=60;}return('0'+h).slice(-2)+':'+('0'+mi).slice(-2);},
   _getWeekNumber:function(d){var o=new Date(d.getFullYear(),0,1);return Math.ceil(((d-o)/864e5+o.getDay()+1)/7);},

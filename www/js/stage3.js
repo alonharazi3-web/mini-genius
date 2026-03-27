@@ -6,7 +6,7 @@ const Stage3={
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage3_assigned\',this)">'
     +'<div class="cb-box '+(c.stage3_assigned?'checked':'')+'">✓</div><span>שובץ למבחן</span></div>';
     html+='<div class="form-group"><label class="form-label">תאריך מבחן</label>'
-    +'<input type="date" class="form-input" value="'+(c.stage3_examDate||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage3_examDate\',this.value)"></div>';
+    +'<input type="date" class="form-input" value="'+(c.stage3_examDate||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage3_examDate\',this.value);Stage3._autoCalendar(\''+c.id+'\',this.value)"></div>';
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage3_systemUpdated\',this)">'
     +'<div class="cb-box '+(c.stage3_systemUpdated?'checked':'')+'">✓</div><span>עודכן במערכת</span></div>';
     html+='<div style="display:flex;gap:6px;margin-top:8px;">'
@@ -35,5 +35,9 @@ const Stage3={
   async sendToExamCenter(id){var c=await DB.getCandidate(id);var phone=App.settings.examCenterPhone||'';
     if(!phone){Utils.toast('הגדר מספר מוקד בניהול','danger');return;}
     var msg=(App.settings.msgStage3Coord||'').replace('{name}',c.name).replace('{date}',c.stage3_examDate||'');
-    Utils.openWhatsApp(phone,msg);}
+    Utils.openWhatsApp(phone,msg);},
+  async _autoCalendar(id,date){
+    if(!date)return;
+    await Calendar.createFromCandidate(id,'מטלה ביתית',date,'09:00',3);
+  }
 };

@@ -67,32 +67,11 @@ var Stage2={
       if(c.stage2_q_grade)html+='<div class="card-meta" style="font-weight:700;font-size:1.05rem;">\u05e6\u05d9\u05d5\u05df: '+c.stage2_q_grade+'/7</div>';
       html+='</div>';
     }
-    // Schedule meeting button with Outlook export
-    html+='<div style="padding:8px 14px;display:flex;gap:8px;">'
-    +'<button class="btn btn-outline btn-sm" onclick="Stage2.scheduleMeeting(\''+c.id+'\')">\u{1f4c5} \u05e7\u05d1\u05e2 \u05e4\u05d2\u05d9\u05e9\u05d4</button>'
-    +'<button class="btn btn-outline btn-sm" onclick="Stage2.exportOutlookMeeting(\''+c.id+'\')">\u{1f4ce} \u05e4\u05d2\u05d9\u05e9\u05ea Outlook</button></div>';
+    // Schedule meeting → Calendar
+    html+='<div style="padding:8px 14px;">'
+    +'<button class="btn btn-outline btn-sm" onclick="Stage2.scheduleMeeting(\''+c.id+'\')">📅 קבע פגישה ביומן</button></div>';
     html+=Stages.renderEvaluation(c,2);
     return html;
-  },
-
-  // ===== Outlook meeting export =====
-  async exportOutlookMeeting(id){
-    var c=await DB.getCandidate(id);
-    var html='<div class="modal-title">\u{1f4ce} \u05e4\u05d2\u05d9\u05e9\u05ea Outlook</div>'
-    +'<div class="form-group"><label class="form-label">\u05ea\u05d0\u05e8\u05d9\u05da \u05d5\u05e9\u05e2\u05d4</label>'
-    +'<input class="form-input" id="olkDateTime" type="datetime-local"></div>'
-    +'<div class="form-group"><label class="form-label">\u05de\u05d9\u05e7\u05d5\u05dd</label>'
-    +'<input class="form-input" id="olkLocation" value=""></div>'
-    +'<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="Stage2._doExportOutlook(\''+id+'\')">\u{1f4ce} \u05e6\u05d5\u05e8 \u05e7\u05d5\u05d1\u05e5 .ics</button>';
-    Stages.showModal(html);
-  },
-  async _doExportOutlook(id){
-    var c=await DB.getCandidate(id);
-    var dt=Utils.id('olkDateTime')?.value;
-    if(!dt){Utils.toast('\u05d1\u05d7\u05e8 \u05ea\u05d0\u05e8\u05d9\u05da','danger');return;}
-    var loc=Utils.id('olkLocation')?.value||'';
-    Stages.closeModal();
-    Utils.generateIcsAndShare('\u05e8\u05d0\u05d9\u05d5\u05df \u05d8\u05dc\u05e4\u05d5\u05e0\u05d9 — '+c.name,new Date(dt),null,loc);
   },
 
   // ===== Schedule meeting via calendar =====
@@ -108,7 +87,8 @@ var Stage2={
     var dt=Utils.id('mtgDateTime')?.value;
     if(!dt){Utils.toast('\u05d1\u05d7\u05e8 \u05ea\u05d0\u05e8\u05d9\u05da','danger');return;}
     var parts=dt.split('T');
-    Utils.scheduleReminder('\u05e8\u05d0\u05d9\u05d5\u05df \u05d8\u05dc\u05e4\u05d5\u05e0\u05d9 — '+c.name,parts[0],parts[1]);
+    await Calendar.createFromCandidate(id,'\u05e8\u05d0\u05d9\u05d5\u05df \u05d8\u05dc\u05e4\u05d5\u05e0\u05d9',parts[0],parts[1]||'09:00',2);
+    Stages.closeModal();Utils.toast('\u05e0\u05d5\u05e1\u05e3 \u05dc\u05d9\u05d5\u05de\u05df','success');
   },
 
   // ===== Word export of questionnaire =====

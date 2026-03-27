@@ -196,7 +196,7 @@ const Stages={
     var stageName=Utils.getStageName(stageId);
     html+='<div class="section-title">'+stageName+'</div><div class="card">';
     html+='<div class="form-group"><label class="form-label">תאריך</label>'
-    +'<input type="date" class="form-input" value="'+(c['stage'+stageId+'_date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_date\',this.value)"></div>';
+    +'<input type="date" class="form-input" value="'+(c['stage'+stageId+'_date']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_date\',this.value);Stages._autoCalendar(\''+c.id+'\','+stageId+',this.value)"></div>';
     html+='<div class="form-group"><label class="form-label">שעה</label>';
     if(stageId===5){
       // v3.1 #8: Stage 5 fixed time
@@ -223,6 +223,15 @@ const Stages={
     html+='</div>';
     html+=this.renderEvaluation(c,stageId);
     return html;
+  },
+
+  // v3.3: Auto-add to calendar when date is set
+  async _autoCalendar(id,stageId,date){
+    if(!date)return;
+    var c=await DB.getCandidate(id);if(!c)return;
+    var time=c['stage'+stageId+'_time']||'09:00';
+    var stageName=Utils.getStageName(stageId);
+    await Calendar.createFromCandidate(id,stageName,date,time,stageId);
   },
 
   async sendInvite(id,stageId){
