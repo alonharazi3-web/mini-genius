@@ -120,8 +120,26 @@ const App={
     });
   },
 
-  setupRouting(){window.addEventListener('hashchange',function(){App.flushDirty();App.handleRoute()})},
+  setupRouting(){
+    window.addEventListener('hashchange',function(){App.flushDirty();App.handleRoute()});
+    // #3: Android back button restores previous view
+    document.addEventListener('backbutton',function(e){
+      e.preventDefault();
+      if(document.getElementById('previewOverlay')){document.getElementById('previewOverlay').remove();return;}
+      if(document.querySelector('.modal.show')){Stages.closeModal();return;}
+      var hash=location.hash.replace('#','');
+      if(hash.startsWith('candidate')){App.navigate('stage',App.currentStage);return;}
+      if(hash.startsWith('dashboard')||hash.startsWith('tasks')||hash.startsWith('daysummary')||hash.startsWith('admin')){
+        App.navigate('stage',App.currentStage);return;
+      }
+    },false);
+  },
   navigate(page,param){
+    // #3: Save current scroll position before navigating away
+    App._scrollPositions=App._scrollPositions||{};
+    var curHash=location.hash.replace('#','');
+    App._scrollPositions[curHash]=window.scrollY;
+
     this.flushDirty();
     if(page==='stage')location.hash='#stage/'+param;
     else if(page==='candidate')location.hash='#candidate/'+param;
@@ -136,7 +154,7 @@ const App={
     var hash=location.hash.replace('#','');var parts=hash.split('/');
     _dbg('Route: '+hash);
     if(parts[0]==='stage'){var s=parseInt(parts[1])||1;this.currentStage=s;this.renderStageList(s);}
-    else if(parts[0]==='candidate'){this.renderCandidateView(parts[1]);}
+    else if(parts[0]==='candidate'){window.scrollTo(0,0);this.renderCandidateView(parts[1]);}
     else if(parts[0]==='dashboard'){Dashboard.render(this.currentStage);}
     else if(parts[0]==='tasks'){Tasks.render(this.currentStage);}
     else if(parts[0]==='daysummary'){DaySummary.render();}
@@ -174,51 +192,84 @@ const App={
   },
 
   async renderStageList(stageId){
+    // #3: Save scroll position before rendering
+    App._scrollPositions=App._scrollPositions||{};
     var stage=Utils.getStage(stageId);if(!stage)return;
     var cands=await DB.getByStage(stageId,this.currentJob);
     var active=cands.filter(function(c){return c.status!=='stopped'&&c.status!=='frozen'});
     active.sort(function(a,b){var pa={high:0,medium:1,low:2};return(pa[a.priority]||1)-(pa[b.priority]||1);});
+
+    // #1: Get frozen candidates for stage 1
+    var frozen=[];
+    if(stageId===1){
+      var allCands=await DB.getAllCandidates();
+      frozen=allCands.filter(function(c){return c.status==='frozen'&&c.jobId===App.currentJob;});
+    }
+
     var page=Utils.id('mainContent');
     var html='<div class="page active">';
-    // v3.1 #4: Global search
     html+='<div style="padding:10px 14px;"><div class="search-bar">'
     +'<input class="form-input" id="stageSearch" placeholder="חפש מועמד בכל השלבים (שם או טלפון)..." oninput="App.globalSearch(this.value)" style="padding-right:14px;">'
     +'</div></div>';
-    if(!active.length){
+    if(!active.length&&!frozen.length){
       html+='<div class="empty-state"><div class="icon">💭</div>'
       +'<div>אין מועמדים בשלב זה</div></div>';
     }else{
       html+='<div id="candidateList">';
       active.forEach(function(c){
-        var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
-        var days=Utils.workDaysSince(c.stageEnteredAt||c.updatedAt);var delayed=days>=ad;
-        // v3.1 #3: Build grade summary
-        var gradeSummary='';
-        for(var si=1;si<stageId;si++){
-          var g=c['stage'+si+'_grade'];
-          if(g)gradeSummary+=(gradeSummary?' | ':'')+Utils.getStage(si).icon+g+'/7';
-        }
-        var notesTrim=(c.notes||'').substring(0,40);
-        html+='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
-        +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-        +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
-        +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
-        +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-        +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
-        +(delayed?' | <span style="color:var(--danger);">בעיכוב!</span>':'')+'</div>';
-        if(gradeSummary)html+='<div class="card-meta" style="color:var(--primary);">ציונים: '+gradeSummary+'</div>';
-        if(notesTrim)html+='<div class="card-meta">📝 '+Utils.escHtml(notesTrim)+(c.notes.length>40?'...':'')+'</div>';
-        html+='</div>'
-        +'<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:8px;">'
-        +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;padding:5px 10px;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
-        +'</div></div>';
+        html+=App._renderCandidateCard(c,stageId);
       });
+      // #1: Show frozen candidates with purple border
+      if(frozen.length){
+        html+='<div class="section-title" style="border-color:var(--purple);margin:16px 14px 0;">❄️ מוקפאים ('+frozen.length+')</div>';
+        frozen.forEach(function(c){
+          var frozenDays=Utils.daysSince(c.frozenAt);
+          html+='<div class="card" style="border-right:4px solid #9B59B6;opacity:.85;" data-name="'+Utils.escHtml(c.name)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
+          +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+          +'<span class="card-name">❄️ '+Utils.escHtml(c.name)+'</span>'
+          +'<span class="status-badge status-frozen">הקפאה</span></div>'
+          +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | הוקפא לפני '+frozenDays+' ימים'
+          +' | מתחנה: '+Utils.getStageName(c.frozenFromStage||c.stage)+'</div>'
+          +'<div style="display:flex;gap:6px;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:8px;">'
+          +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;color:#9B59B6;" onclick="event.stopPropagation();Stages.unfreezeCandidate(\''+c.id+'\')">🔓 הוצא מהקפאה</button>'
+          +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
+          +'</div></div>';
+        });
+      }
       html+='</div>';
     }
-    // v3.1 #4: Global search results area
     html+='<div id="globalSearchResults" style="display:none;"></div>';
     html+='</div>';page.innerHTML=html;this.updateBadges();
     Tasks.renderInline(stageId);
+    // #3: Restore scroll position
+    var savedScroll=App._scrollPositions['stage/'+stageId];
+    if(savedScroll)setTimeout(function(){window.scrollTo(0,savedScroll);},50);
+  },
+
+  // Helper to render a candidate card (reused in stage list)
+  _renderCandidateCard:function(c,stageId){
+    var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
+    var days=Utils.workDaysSince(c.stageEnteredAt||c.updatedAt);var delayed=days>=ad;
+    var gradeSummary='';
+    for(var si=1;si<stageId;si++){
+      var g=c['stage'+si+'_grade'];
+      if(g)gradeSummary+=(gradeSummary?' | ':'')+Utils.getStage(si).icon+g+'/7';
+    }
+    var notesTrim=(c.notes||'').substring(0,40);
+    var html='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(c.name)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
+    +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+    +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
+    +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
+    +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+    +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
+    +(delayed?' | <span style="color:var(--danger);">בעיכוב!</span>':'')+'</div>';
+    if(gradeSummary)html+='<div class="card-meta" style="color:var(--primary);">ציונים: '+gradeSummary+'</div>';
+    if(notesTrim)html+='<div class="card-meta">📝 '+Utils.escHtml(notesTrim)+(c.notes.length>40?'...':'')+'</div>';
+    html+='</div>'
+    +'<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:8px;">'
+    +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;padding:5px 10px;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
+    +'</div></div>';
+    return html;
   },
 
   // v3.1 #4: Global search across ALL stages
@@ -246,10 +297,14 @@ const App={
     }
     var html='<div style="padding:6px 14px;font-size:.82rem;color:var(--text-light);">'+matches.length+' תוצאות בכל השלבים</div>';
     matches.forEach(function(c){
-      html+='<div class="card" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-      +'<div class="card-header"><span class="card-name">'+Utils.escHtml(c.name)+'</span>'
+      html+='<div class="card">'
+      +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
+      +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(c.name)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
       +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
-      +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div></div>';
+      +'<div class="card-meta" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div>'
+      +'<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:6px;">'
+      +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;padding:5px 10px;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
+      +'</div></div>';
     });
     resultsEl.innerHTML=html;resultsEl.style.display='block';
   },

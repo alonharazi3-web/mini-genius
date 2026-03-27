@@ -463,35 +463,31 @@ var Sync={
     }
     html+='<div class="cb-row" onclick="this.querySelector(\'.cb-box\').classList.toggle(\'checked\')">'
     +'<div class="cb-box checked" id="exitUpload">✓</div><span>העלה נתונים לענן</span></div>'
-    +'<div class="cb-row" onclick="this.querySelector(\'.cb-box\').classList.toggle(\'checked\')">'
-    +'<div class="cb-box" id="exitReport">✓</div><span>שלח דוח סיכום יום במייל</span></div>'
-    +'<div style="display:flex;gap:8px;margin-top:16px;">'
-    +'<button class="btn btn-danger" style="flex:1;" onclick="Sync._doExit()">🚪 צא</button>'
-    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    +'<div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">'
+    +'<button class="btn btn-primary" style="width:100%;" onclick="Sync._doExitDayClose()">📋 סגירת יום (דוח + מייל)</button>'
+    +'<button class="btn btn-danger" style="width:100%;" onclick="Sync._doExit()">🚪 צא בלי דוח</button>'
+    +'<button class="btn btn-outline" style="width:100%;" onclick="Stages.closeModal()">ביטול</button></div>';
     Stages.showModal(html);
+  },
+
+  async _doExitDayClose(){
+    Stages.closeModal();
+    var doUpload=Utils.id('exitUpload')?.classList.contains('checked');
+    if(doUpload&&Sync.isSignedIn()){
+      Utils.toast('מעלה נתונים...','info');
+      try{await Sync.fullUpload();}catch(e){_dbg('Exit upload err: '+e);}
+    }
+    // Open full day close flow
+    DaySummary.prepareCloseDay();
   },
 
   async _doExit(){
     Stages.closeModal();
     var doUpload=Utils.id('exitUpload')?.classList.contains('checked');
-    var doReport=Utils.id('exitReport')?.classList.contains('checked');
-
     if(doUpload&&Sync.isSignedIn()){
       Utils.toast('מעלה נתונים...','info');
-      try{
-        await Sync.fullUpload();
-      }catch(e){_dbg('Exit upload err: '+e);Utils.toast('שגיאה בהעלאה','danger');}
+      try{await Sync.fullUpload();}catch(e){_dbg('Exit upload err: '+e);}
     }
-    if(doReport){
-      // Open the full day close flow (same as סגירת יום)
-      DaySummary.prepareCloseDay();
-      // After sending, allow app to close
-      setTimeout(function(){
-        if(navigator.app&&navigator.app.exitApp)navigator.app.exitApp();
-      },120000); // auto-close after 2 min if user doesn't act
-      return;
-    }
-    // Close app
     if(navigator.app&&navigator.app.exitApp){
       navigator.app.exitApp();
     }else{
