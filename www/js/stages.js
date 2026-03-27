@@ -215,11 +215,12 @@ const Stages={
     html+='<div class="cb-row" onclick="Stages.toggleCheck(\''+c.id+'\',\'stage'+stageId+'_done\',this)">'
     +'<div class="cb-box '+(c['stage'+stageId+'_done']?'checked':'')+'">✓</div>'
     +'<span>בוצע</span></div>';
-    html+='<div style="margin-top:8px;"><button class="btn btn-wa btn-sm" onclick="Stages.sendInvite(\''+c.id+'\','+stageId+')">📱 שלח זימון</button></div>';
-    html+='</div>';
+    html+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">'
+    +'<button class="btn btn-wa btn-sm" onclick="Stages.sendInvite(\''+c.id+'\','+stageId+')">📱 שלח זימון</button>';
     if(c['stage'+stageId+'_date']){
-      html+='<div style="padding:6px 14px;"><button class="btn btn-outline btn-sm" onclick="Utils.scheduleReminder(\''+Utils.escHtml(c.name)+' - '+Utils.escHtml(stageName)+'\',\''+c['stage'+stageId+'_date']+'\',\''+(c['stage'+stageId+'_time']||'09:00')+'\')">🔔 הוסף תזכורת</button></div>';
+      html+='<button class="btn btn-outline btn-sm" onclick="Calendar.createFromCandidate(\''+c.id+'\',\''+Utils.escHtml(stageName)+'\',\''+(c['stage'+stageId+'_date']||'')+'\',\''+(c['stage'+stageId+'_time']||'09:00')+'\','+stageId+')">📅 הוסף ליומן</button>';
     }
+    html+='</div>';
     html+=this.renderEvaluation(c,stageId);
     return html;
   },

@@ -204,7 +204,8 @@ var Sync={
     var candidates=await DB.getAllCandidates();
     var jobs=await DB.getAllJobs();
     var tasks=await DB.getAllTasks();
-    return{version:2,candidates:candidates,jobs:jobs,tasks:tasks,
+    var events=await DB.getAllEvents();
+    return{version:2,candidates:candidates,jobs:jobs,tasks:tasks,events:events,
       exportedAt:new Date().toISOString(),
       exportedBy:Sync._currentRecruiter||'unknown'};
   },
@@ -250,6 +251,12 @@ var Sync={
       for(var i=0;i<localTasks.length;i++)await DB.del('tasks',localTasks[i].id);
       for(var i=0;i<(remote.tasks||[]).length;i++){
         await DB.put('tasks',remote.tasks[i]);
+      }
+      // Replace events
+      var localEvents=await DB.getAllEvents();
+      for(var i=0;i<localEvents.length;i++)await DB.del('events',localEvents[i].id);
+      for(var i=0;i<(remote.events||[]).length;i++){
+        await DB.put('events',remote.events[i]);
       }
       await DB.setSetting('_lastSyncTime',new Date().toISOString());
       Utils.toast('הורדו '+(remote.candidates||[]).length+' מועמדים מהענן','success');
@@ -323,10 +330,11 @@ var Sync={
         Sync._merged=merged;
         Sync._mergeStats=mergeStats;
         Sync._remoteTasks=remote.tasks||[];
+        Sync._remoteEvents=remote.events||[];
         Sync._conflictIdx=0;
         Sync._showConflict();
       }else{
-        await Sync._finalizeMerge(merged,mergeStats,remote.tasks||[]);
+        await Sync._finalizeMerge(merged,mergeStats,remote.tasks||[],remote.events||[]);
       }
     }catch(e){
       _dbg('Sync err: '+e);
@@ -334,12 +342,12 @@ var Sync={
     }
   },
 
-  _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_conflictIdx:0,
+  _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_remoteEvents:[],_conflictIdx:0,
 
   _showConflict:function(){
     var idx=Sync._conflictIdx;
     if(idx>=Sync._conflicts.length){
-      Sync._finalizeMerge(Sync._merged,Sync._mergeStats,Sync._remoteTasks);
+      Sync._finalizeMerge(Sync._merged,Sync._mergeStats,Sync._remoteTasks,Sync._remoteEvents);
       return;
     }
     var c=Sync._conflicts[idx];var lc=c.local;var rc=c.remote;
@@ -379,7 +387,7 @@ var Sync={
     Sync._showConflict();
   },
 
-  async _finalizeMerge(merged,stats,remoteTasks){
+  async _finalizeMerge(merged,stats,remoteTasks,remoteEvents){
     // 1. Save ALL merged candidates to local DB
     var localAll=await DB.getAllCandidates();
     var localIds={};localAll.forEach(function(c){localIds[c.id]=true;});
@@ -398,6 +406,13 @@ var Sync={
       if(!localTaskIds[rt.id]){
         await DB.put('tasks',rt);
       }
+    }
+
+    // 2b. Merge events
+    var localEvts=await DB.getAllEvents();
+    var localEvtIds={};localEvts.forEach(function(e){localEvtIds[e.id]=true;});
+    for(var i=0;i<(remoteEvents||[]).length;i++){
+      if(!localEvtIds[remoteEvents[i].id])await DB.put('events',remoteEvents[i]);
     }
 
     // 3. Upload COMPLETE merged state to cloud

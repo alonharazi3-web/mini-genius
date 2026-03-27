@@ -1,5 +1,5 @@
 'use strict';
-const DB={_db:null,DB_NAME:'MiniGenius',DB_VERSION:3,
+const DB={_db:null,DB_NAME:'MiniGenius',DB_VERSION:4,
 async init(){return new Promise((res,rej)=>{const r=indexedDB.open(this.DB_NAME,this.DB_VERSION);
 r.onupgradeneeded=e=>{const db=e.target.result;
 if(!db.objectStoreNames.contains('candidates')){const s=db.createObjectStore('candidates',{keyPath:'id'});
@@ -10,6 +10,8 @@ if(!db.objectStoreNames.contains('jobs'))db.createObjectStore('jobs',{keyPath:'i
 if(!db.objectStoreNames.contains('tasks'))db.createObjectStore('tasks',{keyPath:'id'});
 if(!db.objectStoreNames.contains('daylog'))db.createObjectStore('daylog',{keyPath:'id'});
 if(!db.objectStoreNames.contains('files'))db.createObjectStore('files',{keyPath:'id'});
+if(!db.objectStoreNames.contains('events')){var es=db.createObjectStore('events',{keyPath:'id'});
+es.createIndex('date','date',{unique:false});}
 };r.onsuccess=e=>{this._db=e.target.result;res();};r.onerror=e=>rej(e.target.error);})},
 async _tx(st,mode,fn){return new Promise((res,rej)=>{const tx=this._db.transaction(st,mode);const s=tx.objectStore(st);const r=fn(s);
 if(r&&r.onsuccess!==undefined){r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}
@@ -43,6 +45,12 @@ async getFile(id){return this.get('files',id)},
 async logAction(type,desc){const today=new Date().toISOString().split('T')[0];
 await this.put('daylog',{id:'dl_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),type:type,desc:desc,date:today,time:new Date().toISOString()});},
 async getDayLog(date){const all=await this.getAll('daylog');return all.filter(l=>l.date===date);},
+async saveEvent(ev){if(!ev.id)ev.id='ev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);
+ev.updatedAt=new Date().toISOString();await this.put('events',ev);return ev;},
+async getEvent(id){return this.get('events',id)},
+async getAllEvents(){return this.getAll('events')},
+async getEventsByDate(date){return this.getByIdx('events','date',date)},
+async delEvent(id){return this.del('events',id)},
 async initDefaults(){const ex=await this.getAllSettings();
 const defs={recruiters:'[]',leadRecruiter:'',email:'',examCenterPhone:'',activeJobId:'',
 msgStage1:'\u05e9\u05dc\u05d5\u05dd {name}, \u05de\u05d5\u05e2\u05de\u05d3\u05d5\u05ea\u05da \u05d4\u05ea\u05e7\u05d1\u05dc\u05d4.',

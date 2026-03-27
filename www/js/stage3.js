@@ -20,7 +20,7 @@ const Stage3={
     +'<textarea class="form-textarea" rows="2" onchange="Stages.saveField(\''+c.id+'\',\'stage3_notes\',this.value)">'+Utils.escHtml(c.stage3_notes||'')+'</textarea></div></div>';
     if(c.stage3_result==='pass')html+='<div style="padding:12px;"><button class="btn btn-success" style="width:100%;" onclick="Stages.advanceToNextStage(\''+c.id+'\')">העבר ל'+Utils.getStageName(4)+'</button></div>';
     // Reminder
-    if(c.stage3_examDate)html+='<div style="padding:6px 14px;"><button class="btn btn-outline btn-sm" onclick="Utils.scheduleReminder(\''+Utils.escHtml(c.name)+' - מבחן\',\''+c.stage3_examDate+'\',\'09:00\')">🔔 תזכורת</button></div>';
+    if(c.stage3_examDate)html+='<div style="padding:6px 14px;"><button class="btn btn-outline btn-sm" onclick="Calendar.createFromCandidate(\''+c.id+'\',\'מטלה ביתית\',\''+c.stage3_examDate+'\',\'09:00\',3)">📅 הוסף ליומן</button></div>';
     return html;
   },
   async _setResult(id,result){var c=await DB.getCandidate(id);c.stage3_result=result;c.stage3_resultAt=new Date().toISOString();

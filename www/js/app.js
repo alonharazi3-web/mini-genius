@@ -22,6 +22,7 @@ const App={
       this.navigate('stage',1);
     }
     Tasks.carryOverTasks();
+    Calendar.init();
     // v3.2: Init sync + show recruiter/sync prompt
     await Sync.init();
     setTimeout(function(){
@@ -370,6 +371,7 @@ const App={
     +'<div class="radio-btn '+(rec==='recommended'?'active':'')+'" data-val="recommended" onclick="App._editRec(this)">⭐ מומלצים</div>'
     +'<div class="radio-btn '+(rec==='unit'?'active':'')+'" data-val="unit" onclick="App._editRec(this)">🥈 מומלצי יחידה</div>'
     +'<div class="radio-btn '+(rec==='eitan'?'active':'')+'" data-val="eitan" onclick="App._editRec(this)">🥇 מומלצי איתן</div>'
+    +'<div class="radio-btn '+(rec==='employee'?'active':'')+'" data-val="employee" onclick="App._editRec(this)">🪪 עובדים</div>'
     +'</div></div>';
     html+='<div style="display:flex;gap:8px;margin-top:16px;">'
     +'<button class="btn btn-primary" style="flex:1;" onclick="App.saveEdit(\''+c.id+'\')">💾 שמור</button>'
@@ -417,7 +419,7 @@ const App={
     var all=await DB.getAllCandidates();
     var recommended=all.filter(function(c){return c.recommendation&&c.recommendation!=='';});
     // Group by type
-    var groups={eitan:[],unit:[],recommended:[]};
+    var groups={eitan:[],unit:[],recommended:[],employee:[]};
     recommended.forEach(function(c){
       if(groups[c.recommendation])groups[c.recommendation].push(c);
     });
@@ -436,12 +438,13 @@ const App={
       +'<div class="kpi"><div class="kpi-value" style="color:#FFD700;">'+groups.eitan.length+'</div><div class="kpi-label">🥇 מומלצי איתן</div></div>'
       +'<div class="kpi"><div class="kpi-value" style="color:#C0C0C0;">'+groups.unit.length+'</div><div class="kpi-label">🥈 מומלצי יחידה</div></div>'
       +'<div class="kpi"><div class="kpi-value" style="color:#B8860B;">'+groups.recommended.length+'</div><div class="kpi-label">⭐ מומלצים</div></div>'
+      +'<div class="kpi"><div class="kpi-value" style="color:#4A90D9;">'+groups.employee.length+'</div><div class="kpi-label">🪪 עובדים</div></div>'
       +'</div>';
 
-      // Render each group
       var order=[{key:'eitan',icon:'🥇',label:'מומלצי איתן',color:'#FFD700'},
                  {key:'unit',icon:'🥈',label:'מומלצי יחידה',color:'#C0C0C0'},
-                 {key:'recommended',icon:'⭐',label:'מומלצים',color:'#B8860B'}];
+                 {key:'recommended',icon:'⭐',label:'מומלצים',color:'#B8860B'},
+                 {key:'employee',icon:'🪪',label:'עובדים',color:'#4A90D9'}];
       order.forEach(function(g){
         if(!groups[g.key].length)return;
         html+='<div class="section-title" style="border-color:'+g.color+';">'+g.icon+' '+g.label+' ('+groups[g.key].length+')</div>';
@@ -468,7 +471,7 @@ const App={
   async exportRecommendationsReport(){
     var all=await DB.getAllCandidates();
     var recommended=all.filter(function(c){return c.recommendation&&c.recommendation!=='';});
-    var groups={eitan:[],unit:[],recommended:[]};
+    var groups={eitan:[],unit:[],recommended:[],employee:[]};
     recommended.forEach(function(c){if(groups[c.recommendation])groups[c.recommendation].push(c);});
 
     var html='<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><style>'
@@ -480,7 +483,8 @@ const App={
 
     var order=[{key:'eitan',icon:'🥇',label:'מומלצי איתן'},
                {key:'unit',icon:'🥈',label:'מומלצי יחידה'},
-               {key:'recommended',icon:'⭐',label:'מומלצים'}];
+               {key:'recommended',icon:'⭐',label:'מומלצים'},
+               {key:'employee',icon:'🪪',label:'עובדים'}];
     order.forEach(function(g){
       if(!groups[g.key].length)return;
       html+='<h2>'+g.icon+' '+g.label+' ('+groups[g.key].length+')</h2>'
