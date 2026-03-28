@@ -371,7 +371,7 @@ var Calendar={
   },
 
   // ===== HELPERS =====
-  _dateStr:function(d){return d.toISOString().split('T')[0];},
+  _dateStr:function(d){var y=d.getFullYear();var m=('0'+(d.getMonth()+1)).slice(-2);var dd=('0'+d.getDate()).slice(-2);return y+'-'+m+'-'+dd;},
   _eventInHour:function(ev,h){if(!ev.time)return false;return parseInt(ev.time.split(':')[0])===h;},
   _detectOverlap:function(events){
     if(events.length<2)return false;
