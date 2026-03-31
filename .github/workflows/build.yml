@@ -1,22 +1,32 @@
-name: Build Mini Genius Windows
-
+name: Build Android APK
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: npm install -g cordova
       - run: npm install
-      - run: npm run build
+      - run: cordova platform add android || true
+      - run: cordova build android --debug
+      - run: |
+          APK=$(find platforms/android -name "*.apk" -type f | head -1)
+          cp "$APK" "mini-genius-debug.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: mini-genius-windows
-          path: dist/*.exe
+          name: mini-genius-debug
+          path: mini-genius-debug.apk
           retention-days: 90
