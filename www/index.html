@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content: blob:;">
 <title>Mini Genius</title>
 <link rel="stylesheet" href="css/app.css">
@@ -101,6 +101,6 @@ _dbg('Page loaded, UA: '+navigator.userAgent.substr(0,60));
 <script src="js/sync.js" onload="_dbg('sync.js OK')"></script>
 <script src="js/calendar.js" onload="_dbg('calendar.js OK')"></script>
 <script src="js/app.js" onload="_dbg('app.js OK')"></script>
-<script src="cordova.js"></script>
+<script src="js/electron-polyfill.js"></script>
 </body>
 </html>

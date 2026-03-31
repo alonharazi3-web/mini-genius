@@ -1,26 +1,29 @@
 {
   "name": "mini-genius",
   "version": "3.4.0",
-  "displayName": "Mini Genius",
-  "private": true,
-  "dependencies": {
-    "cordova-android": "^13.0.0",
-    "cordova-plugin-file": "^8.1.0",
-    "cordova-plugin-device": "^3.0.0",
-    "cordova-plugin-statusbar": "^4.0.0",
-    "cordova-plugin-x-socialsharing": "^6.0.4",
-    "com-darryncampbell-cordova-plugin-intent": "^2.2.0"
+  "description": "Mini Genius HR Recruitment App — Windows Desktop",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64"
   },
-  "cordova": {
-    "platforms": [
-      "android"
+  "build": {
+    "appId": "com.recruit.minigenius",
+    "productName": "Mini Genius",
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "icon": "www/img/icon.png"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "www/**/*"
     ],
-    "plugins": {
-      "cordova-plugin-file": {},
-      "cordova-plugin-device": {},
-      "cordova-plugin-statusbar": {},
-      "cordova-plugin-x-socialsharing": {},
-      "com-darryncampbell-cordova-plugin-intent": {}
-    }
+    "directories": { "output": "dist" },
+    "artifactName": "mini-genius-windows-${version}.exe"
+  },
+  "devDependencies": {
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3"
   }
 }
