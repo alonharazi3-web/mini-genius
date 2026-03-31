@@ -179,7 +179,7 @@ generateIcsAndShare(title,startDate,endDate,location){
 },
 
 // ===== Export questionnaire as HTML (returns html string) =====
-exportQuestionnaireAsWord(candidateName,sections,grade,result,notes){
+exportQuestionnaireAsWord(candidateName,sections,grade,result,notes,rejectionReason){
   var html='<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8">'
   +'<style>body{font-family:David,Arial;direction:rtl;padding:30px;max-width:800px;margin:0 auto;}'
   +'h1{color:#1B2A4A;border-bottom:2px solid #1B2A4A;padding-bottom:8px;font-size:22px;}'
@@ -208,6 +208,7 @@ exportQuestionnaireAsWord(candidateName,sections,grade,result,notes){
     html+='</table>';
   });
   if(notes)html+='<h2>הערות</h2><p>'+Utils.escHtml(notes)+'</p>';
+  if(rejectionReason)html+='<h2 style="color:#dc2626;">סיבת דחייה</h2><p style="color:#dc2626;">'+Utils.escHtml(rejectionReason)+'</p>';
   html+='</body></html>';
   return html;
 },

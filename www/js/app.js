@@ -507,51 +507,100 @@ const App={
   // v3.1: Full candidate overview
   async showCandidateOverview(id){
     var c=await DB.getCandidate(id);if(!c)return;
-    var html='<div class="modal-title">📋 סקירת מועמד — '+Utils.escHtml(c.name)+'</div>';
+    var q=function(f){return c['stage2_q_'+f]||'';};
+    var html='<div class="modal-title" style="font-size:1rem;">📋 סקירת מועמד — '+Utils.escHtml(c.name)+'</div>';
     // Basic info
-    html+='<div style="margin-bottom:12px;">'
-    +'<div style="font-size:.88rem;"><strong>טלפון:</strong> '+Utils.escHtml(c.phone)+'</div>'
-    +'<div style="font-size:.88rem;"><strong>תחנה:</strong> '+Utils.getStageName(c.stage)+'</div>'
-    +'<div style="font-size:.88rem;"><strong>סטטוס:</strong> '+Utils.STATUSES[c.status]+'</div>'
-    +'<div style="font-size:.88rem;"><strong>עדיפות:</strong> '+(c.priority==='high'?'🔴 גבוה':c.priority==='low'?'🟢 נמוך':'🟠 בינוני')+'</div>';
-    if(c.recommendation)html+='<div style="font-size:.88rem;"><strong>המלצה:</strong> '+Utils.REC_ICONS[c.recommendation]+' '+Utils.REC_LABELS[c.recommendation]+'</div>';
-    if(c.referrer)html+='<div style="font-size:.88rem;"><strong>ממליץ:</strong> '+Utils.escHtml(c.referrer)+'</div>';
-    if(c.recruiter)html+='<div style="font-size:.88rem;"><strong>רכז:</strong> '+Utils.escHtml(c.recruiter)+'</div>';
-    if(c.notes)html+='<div style="font-size:.88rem;"><strong>הערות:</strong> '+Utils.escHtml(c.notes)+'</div>';
+    html+='<div style="margin-bottom:10px;font-size:.82rem;">'
+    +'<div><strong>טלפון:</strong> '+Utils.escHtml(c.phone)+'</div>'
+    +'<div><strong>תחנה:</strong> '+Utils.getStageName(c.stage)+' | <strong>סטטוס:</strong> '+Utils.STATUSES[c.status]+'</div>'
+    +'<div><strong>עדיפות:</strong> '+(c.priority==='high'?'🔴 גבוה':c.priority==='low'?'🟢 נמוך':'🟠 בינוני')+'</div>';
+    if(c.recommendation)html+='<div><strong>המלצה:</strong> '+(Utils.REC_ICONS[c.recommendation]||'')+' '+(Utils.REC_LABELS[c.recommendation]||'')+'</div>';
+    if(c.referrer)html+='<div><strong>ממליץ:</strong> '+Utils.escHtml(c.referrer)+'</div>';
+    if(c.recruiter)html+='<div><strong>רכז:</strong> '+Utils.escHtml(c.recruiter)+'</div>';
+    if(c.notes)html+='<div><strong>הערות:</strong> '+Utils.escHtml(c.notes)+'</div>';
     html+='</div>';
-    // CV
-    if(c.cvFileName)html+='<div class="info-box">📎 קו"ח: '+Utils.escHtml(c.cvFileName)+'</div>';
-    // Phone questionnaire summary
-    if(c.stage2_q_grade){
-      html+='<div style="padding:8px;background:var(--bg);border-radius:8px;margin-bottom:8px;">'
-      +'<strong>📞 שאלון טלפוני:</strong> ציון '+c.stage2_q_grade+'/7'
-      +(c.stage2_q_result?' | '+Utils.escHtml(c.stage2_q_result):'')
-      +(c.stage2_q_notes?'<br>📝 '+Utils.escHtml(c.stage2_q_notes):'')+'</div>';
+
+    // Files
+    if(c.cvFileName)html+='<div class="info-box" style="padding:6px 10px;">📎 קו"ח: '+Utils.escHtml(c.cvFileName)+'</div>';
+
+    // Phone interview - FULL questionnaire
+    var hasQ=q('age')||q('marital')||q('grade');
+    if(hasQ){
+      html+='<div style="font-weight:700;margin:10px 0 4px;font-size:.88rem;">📞 שאלון טלפוני</div>';
+      if(q('grade'))html+='<div style="font-size:.82rem;padding:4px 0;"><strong>ציון:</strong> '+q('grade')+'/7'
+      +(q('result')?' | <strong>תוצאה:</strong> '+Utils.escHtml(q('result')):'')+'</div>';
+
+      var qSections=[
+        {title:'פרטים אישיים',fields:[
+          ['גיל',q('age')],['מצב משפחתי',q('marital')],['שוחח עם בן/בת זוג',q('partnerTalk'),q('partnerTalkDetail')],
+          ['ילדים',q('children')],['רילוקציה',q('relocation')],['משרה מלאה',q('fullTime')],
+          ['רשיון',q('license')],['רשיון C',q('licenseC')],['ימי התלבטות',q('hesitationDays')]
+        ]},
+        {title:'מצב רפואי',fields:[
+          ['רפואי',q('medical'),q('medicalDetail')],['כושר',q('fitness')],
+          ['פציעת צה"ל',q('idfInjury'),q('idfInjuryDetail')],['ראייה',q('vision'),q('visionDetail')],
+          ['פרופיל',q('idfProfile')],['סממנים',q('tattoos')],['זמינות',q('availability'),q('availabilityDetail')]
+        ]},
+        {title:'השכלה ורקע',fields:[
+          ['עיסוק נוכחי',q('currentJob')],['סיפור חיים',q('lifeStory')],
+          ['בגרות',q('bagrut'),q('bagrutDetail')],['מקצועות מוגברים',q('enhancedSubjects')],
+          ['אנגלית',q('english')],['מתמטיקה',q('math')],
+          ['לקויות למידה',q('learningDisability'),q('learningDisabilityDetail')],
+          ['מכינה/ישיבה',q('mechina'),q('mechinaDetail')]
+        ]},
+        {title:'צבא ותעסוקה',fields:[
+          ['שירות צבאי',q('militaryService')],['לימודים אקדמאיים',q('academic'),q('academicDetail')],
+          ['פסיכומטרי',q('psychometric')],['לאחר צבא',q('postArmy')]
+        ]},
+        {title:'שאלות אינטימיות',fields:[
+          ['הסכמה',q('intimateConsent')],['נפשי',q('intimateMental'),q('intimateMentalDetail')],
+          ['סמים',q('intimateDrugs'),q('intimateDrugsDetail')],
+          ['פלילי',q('intimateCriminal'),q('intimateCriminalDetail')],
+          ['משמעת צבאית',q('intimateMilitary'),q('intimateMilitaryDetail')]
+        ]}
+      ];
+      qSections.forEach(function(sec){
+        var hasData=sec.fields.some(function(f){return f[1];});
+        if(!hasData)return;
+        html+='<div style="font-weight:600;font-size:.78rem;color:var(--accent);margin:8px 0 2px;">'+sec.title+'</div>';
+        sec.fields.forEach(function(f){
+          if(!f[1])return;
+          html+='<div style="font-size:.78rem;padding:2px 0;border-bottom:1px solid #f5f5f5;">'
+          +'<span style="color:var(--text-light);">'+f[0]+':</span> '+Utils.escHtml(f[1]);
+          if(f[2])html+=' <span style="color:var(--accent);font-style:italic;">('+Utils.escHtml(f[2])+')</span>';
+          html+='</div>';
+        });
+      });
+      if(q('notes'))html+='<div style="font-size:.78rem;padding:4px 0;"><strong>הערות שאלון:</strong> '+Utils.escHtml(q('notes'))+'</div>';
+      if(q('rejectionReason'))html+='<div style="font-size:.78rem;padding:4px 0;color:var(--danger);"><strong>סיבת דחייה:</strong> '+Utils.escHtml(q('rejectionReason'))+'</div>';
     }
+
     // Stage grades & notes
-    html+='<div style="font-weight:700;margin:10px 0 6px;">ציונים והערות לפי תחנה:</div>';
-    var hasData=false;
+    html+='<div style="font-weight:700;margin:10px 0 4px;font-size:.88rem;">ציונים והערות לפי תחנה:</div>';
+    var hasStageData=false;
     for(var si=1;si<=7;si++){
-      var grade=c['stage'+si+'_grade'];
-      var notes=c['stage'+si+'_notes'];
-      var decision=c['stage'+si+'_decision'];
-      var completed=c['stage'+si+'_completedAt'];
-      if(grade||notes||decision||completed){
-        hasData=true;
+      var grade=c['stage'+si+'_grade'];var notes=c['stage'+si+'_notes'];
+      var decision=c['stage'+si+'_decision'];var completed=c['stage'+si+'_completedAt'];
+      var result=c['stage'+si+'_result'];
+      if(grade||notes||decision||completed||result){
+        hasStageData=true;
         var st=Utils.getStage(si);
-        html+='<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem;">'
+        html+='<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:.8rem;">'
         +'<strong>'+st.icon+' '+st.name+':</strong> ';
         var parts=[];
         if(grade)parts.push('ציון '+grade+'/7');
-        if(decision)parts.push(decision==='pass'?'✅ עבר':decision==='fail'?'❌ לא עבר':'⏳ '+decision);
+        if(decision||result){var d=decision||result;parts.push(d==='pass'?'✅ עבר':d==='fail'?'❌ לא עבר':'⏳ '+d);}
         if(completed)parts.push(Utils.formatDate(completed));
         html+=parts.join(' | ');
         if(notes)html+='<br>📝 '+Utils.escHtml(notes);
         html+='</div>';
       }
     }
-    if(!hasData)html+='<div class="card-meta">אין נתונים עדיין</div>';
-    html+='<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="Stages.closeModal()">סגור</button>';
+    if(!hasStageData)html+='<div style="font-size:.8rem;color:var(--text-light);">אין נתונים עדיין</div>';
+
+    // Export button
+    if(hasQ)html+='<button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;" onclick="Stages.closeModal();Stage2.exportDocx(\''+c.id+'\')">📄 ייצוא שאלון ל-Word</button>';
+    html+='<button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="Stages.closeModal()">סגור</button>';
     Stages.showModal(html);
   },
 

@@ -356,18 +356,68 @@ var Calendar={
     });return events;
   },
 
-  // ===== REMINDERS =====
+  // ===== REMINDERS with popup + beep =====
+  _activeAlarms:{},
   _checkReminders:function(){
     var now=new Date().toISOString();
     DB.getAllEvents().then(function(events){
       events.forEach(function(ev){
         if(ev.reminderAt&&!ev.reminderFired&&ev.reminderAt<=now){
-          ev.reminderFired=true;DB.saveEvent(ev);
-          var msg='🔔 '+ev.title;if(ev.time)msg+=' ב-'+ev.time;if(ev.candidateName)msg+=' ('+ev.candidateName+')';
-          Utils.toast(msg,'warning');
+          ev.reminderFired=true;ev.reminderShownAt=now;
+          DB.saveEvent(ev);
+          Calendar._showAlarmPopup(ev);
         }
       });
     });
+  },
+
+  _showAlarmPopup:function(ev){
+    var msg=ev.title;if(ev.time)msg+=' ב-'+ev.time;if(ev.candidateName)msg+=' ('+ev.candidateName+')';
+    if(ev.room)msg+=' | '+ev.room;
+    // Create persistent overlay
+    var overlay=document.createElement('div');
+    overlay.id='alarm_'+ev.id;
+    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.3);direction:rtl;">'
+    +'<div style="font-size:2rem;margin-bottom:8px;">🔔</div>'
+    +'<div style="font-size:1.1rem;font-weight:700;margin-bottom:12px;color:#1B2A4A;">תזכורת</div>'
+    +'<div style="font-size:.95rem;margin-bottom:16px;line-height:1.5;">'+Utils.escHtml(msg)+'</div>'
+    +'<button onclick="Calendar._dismissAlarm(\''+ev.id+'\')" style="background:#4A90D9;color:#fff;border:none;padding:12px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">✓ הבנתי</button>'
+    +'</div>';
+    document.body.appendChild(overlay);
+    Calendar._activeAlarms[ev.id]={overlay:overlay,beeped:false};
+    // After 60 seconds, play beep if not dismissed
+    setTimeout(function(){
+      if(Calendar._activeAlarms[ev.id]&&!Calendar._activeAlarms[ev.id].beeped){
+        Calendar._activeAlarms[ev.id].beeped=true;
+        Calendar._playBeep();
+      }
+    },60000);
+  },
+
+  _dismissAlarm:function(id){
+    var alarm=Calendar._activeAlarms[id];
+    if(alarm&&alarm.overlay&&alarm.overlay.parentNode){
+      alarm.overlay.parentNode.removeChild(alarm.overlay);
+    }
+    delete Calendar._activeAlarms[id];
+  },
+
+  _playBeep:function(){
+    try{
+      var ctx=new (window.AudioContext||window.webkitAudioContext)();
+      var osc=ctx.createOscillator();var gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.frequency.value=880;osc.type='sine';
+      gain.gain.value=0.3;
+      osc.start();
+      // 3 short beeps
+      setTimeout(function(){gain.gain.value=0;},200);
+      setTimeout(function(){gain.gain.value=0.3;},400);
+      setTimeout(function(){gain.gain.value=0;},600);
+      setTimeout(function(){gain.gain.value=0.3;},800);
+      setTimeout(function(){osc.stop();ctx.close();},1000);
+    }catch(e){_dbg('Beep err: '+e);}
   },
 
   // ===== HELPERS =====

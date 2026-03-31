@@ -11,10 +11,21 @@ var Sync={
     var expiry=parseInt(App.settings.gdrive_tokenExpiry)||0;
     Sync._syncFileId=App.settings.gdrive_fileId||'';
     Sync._currentRecruiter=App.settings.currentRecruiter||'';
-    if(clientId&&token&&expiry>Date.now()){
-      Sync._token=token;Sync._tokenExpiry=expiry;
-      _dbg('Sync: token loaded, expires '+new Date(expiry).toLocaleTimeString());
-      Sync._startTimers();
+    if(clientId&&token){
+      if(expiry>Date.now()){
+        Sync._token=token;Sync._tokenExpiry=expiry;
+        _dbg('Sync: token loaded, expires '+new Date(expiry).toLocaleTimeString());
+        Sync._startTimers();
+      }else{
+        // Token expired — keep fileId, prompt reconnect
+        _dbg('Sync: token expired, will prompt reconnect');
+        Sync._token=null;Sync._tokenExpiry=0;
+        setTimeout(function(){
+          if(App.settings.gdrive_clientId){
+            Utils.toast('טוקן Google Drive פג — יש להתחבר מחדש','warning');
+          }
+        },4000);
+      }
     }
   },
 
@@ -107,6 +118,23 @@ var Sync={
     App.settings.gdrive_token='';
     Sync._stopTimers();
     Utils.toast('נותקת מ-Google Drive','success');
+  },
+
+  // v3.4: Delete cloud data with local backup first
+  async deleteCloudData(){
+    if(!confirm('זה ימחק את כל הנתונים בענן!\nגיבוי מקומי ייווצר אוטומטית.\nלהמשיך?'))return;
+    try{
+      await Sync._saveLocalBackup();
+      Utils.toast('גיבוי מקומי נשמר','info');
+      // Upload empty data to cloud
+      var emptyData={version:2,candidates:[],jobs:[],tasks:[],events:[],
+        exportedAt:new Date().toISOString(),exportedBy:'DELETED by '+(Sync._currentRecruiter||'user')};
+      await Sync.upload(emptyData);
+      Utils.toast('נתוני ענן נמחקו. גיבוי מקומי נשמר.','success');
+    }catch(e){
+      _dbg('deleteCloud err: '+e);
+      Utils.toast('שגיאה: '+e.message,'danger');
+    }
   },
 
   isSignedIn(){return Sync._token&&Sync._tokenExpiry>Date.now();},
@@ -555,6 +583,7 @@ var Sync={
       +'<button class="btn btn-outline" style="flex:1;" onclick="Sync.fullUpload()">⬆️ העלה הכל</button>'
       +'<button class="btn btn-outline" style="flex:1;" onclick="if(confirm(\'זה יחליף את כל הנתונים המקומיים!\\nלהמשיך?\'))Sync.fullDownload()">⬇️ הורד הכל</button></div>'
       +'<button class="btn btn-outline" style="width:100%;" onclick="Sync._checkRemoteChanges()">🔍 בדוק עדכונים מהענן</button>'
+      +'<button class="btn btn-outline" style="width:100%;color:var(--danger);" onclick="Sync.deleteCloudData()">🗑 מחק נתוני ענן (גיבוי מקומי לפני)</button>'
       +'<button class="btn btn-outline" style="width:100%;" onclick="Sync.signOut()">🔓 נתק מ-Google Drive</button>'
       +'</div>';
     }

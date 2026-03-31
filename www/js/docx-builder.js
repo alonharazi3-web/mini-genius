@@ -93,7 +93,7 @@ var DocxBuilder={
   // Build questionnaire docx
   // sections: [{title, fields:[{label, value, detail}]}]
   // grade, result, notes: optional
-  build:function(candidateName,sections,grade,result,notes){
+  build:function(candidateName,sections,grade,result,notes,rejectionReason){
     var esc=this._esc;
     var today=new Date().toLocaleDateString('he-IL');
 
@@ -177,6 +177,12 @@ var DocxBuilder={
       +'<w:r><w:rPr><w:rtl/></w:rPr><w:t>הערות</w:t></w:r></w:p>';
       body+='<w:p><w:pPr><w:bidi/></w:pPr>'
       +'<w:r><w:rPr><w:rtl/></w:rPr><w:t>'+esc(notes)+'</w:t></w:r></w:p>';
+    }
+    if(rejectionReason){
+      body+='<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:bidi/></w:pPr>'
+      +'<w:r><w:rPr><w:rtl/></w:rPr><w:t>סיבת דחייה</w:t></w:r></w:p>';
+      body+='<w:p><w:pPr><w:bidi/></w:pPr>'
+      +'<w:r><w:rPr><w:color w:val="CC0000"/><w:rtl/></w:rPr><w:t>'+esc(rejectionReason)+'</w:t></w:r></w:p>';
     }
 
     // Full document.xml

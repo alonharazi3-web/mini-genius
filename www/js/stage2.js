@@ -99,17 +99,18 @@ var Stage2={
       {title:'\u05e4\u05e8\u05d8\u05d9\u05dd \u05d0\u05d9\u05e9\u05d9\u05d9\u05dd',fields:[
         {label:'\u05d2\u05d9\u05dc',value:q('age')},
         {label:'\u05de\u05e6\u05d1 \u05de\u05e9\u05e4\u05d7\u05ea\u05d9',value:q('marital')},
-        {label:'\u05e9\u05d5\u05d7\u05d7 \u05e2\u05dd \u05d1\u05df/\u05d1\u05ea \u05d6\u05d5\u05d2',value:q('partnerTalk')},
+        {label:'\u05e9\u05d5\u05d7\u05d7 \u05e2\u05dd \u05d1\u05df/\u05d1\u05ea \u05d6\u05d5\u05d2',value:q('partnerTalk'),detail:q('partnerTalkDetail')},
         {label:'\u05de\u05e1\u05e4\u05e8 \u05d9\u05dc\u05d3\u05d9\u05dd',value:q('children')},
         {label:'\u05de\u05d5\u05db\u05e0\u05d5\u05ea \u05dc\u05e8\u05d9\u05dc\u05d5\u05e7\u05e6\u05d9\u05d4',value:q('relocation')},
         {label:'\u05de\u05e9\u05e8\u05d4 \u05de\u05dc\u05d0\u05d4',value:q('fullTime')},
         {label:'\u05e8\u05e9\u05d9\u05d5\u05df \u05e0\u05d4\u05d9\u05d2\u05d4',value:q('license')},
-        {label:'\u05e8\u05e9\u05d9\u05d5\u05df C',value:q('licenseC')}
+        {label:'\u05e8\u05e9\u05d9\u05d5\u05df C',value:q('licenseC')},
+        {label:'\u05d9\u05de\u05d9 \u05d4\u05ea\u05dc\u05d1\u05d8\u05d5\u05ea',value:q('hesitationDays')}
       ]},
       {title:'\u05de\u05e6\u05d1 \u05e8\u05e4\u05d5\u05d0\u05d9',fields:[
         {label:'\u05de\u05e6\u05d1 \u05e8\u05e4\u05d5\u05d0\u05d9',value:q('medical'),detail:q('medicalDetail')},
         {label:'\u05db\u05d5\u05e9\u05e8 \u05d2\u05d5\u05e4\u05e0\u05d9',value:q('fitness')},
-        {label:'\u05e4\u05e6\u05d9\u05e2\u05ea \u05e6\u05d4"\u05dc',value:q('idfInjury')},
+        {label:'\u05e4\u05e6\u05d9\u05e2\u05ea \u05e6\u05d4"\u05dc',value:q('idfInjury'),detail:q('idfInjuryDetail')},
         {label:'\u05d1\u05e2\u05d9\u05d5\u05ea \u05e8\u05d0\u05d9\u05d9\u05d4/\u05e2\u05d9\u05d5\u05d5\u05e8\u05d5\u05df',value:q('vision'),detail:q('visionDetail')},
         {label:'\u05e4\u05e8\u05d5\u05e4\u05d9\u05dc \u05e6\u05d1\u05d0\u05d9',value:q('idfProfile')},
         {label:'\u05e1\u05de\u05de\u05e0\u05d9\u05dd \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9\u05d9\u05dd',value:q('tattoos')},
@@ -139,7 +140,7 @@ var Stage2={
         {label:'\u05de\u05e9\u05de\u05e2\u05ea/\u05de\u05e6"\u05d7 \u05d1\u05e6\u05d1\u05d0',value:q('intimateMilitary'),detail:q('intimateMilitaryDetail')}
       ]}
     ];
-    Utils.exportQuestionnaireAsWord(c.name,sections,q('grade'),q('result'),q('notes'));
+    Utils.exportQuestionnaireAsWord(c.name,sections,q('grade'),q('result'),q('notes'),q('rejectionReason'));
   },
 
   // v2.7: Real .docx export using DocxBuilder
@@ -150,17 +151,18 @@ var Stage2={
       {title:'פרטים אישיים',fields:[
         {label:'גיל',value:q('age')},
         {label:'מצב משפחתי',value:q('marital')},
-        {label:'שוחח עם בן/בת זוג',value:q('partnerTalk')},
+        {label:'שוחח עם בן/בת זוג',value:q('partnerTalk'),detail:q('partnerTalkDetail')},
         {label:'מספר ילדים',value:q('children')},
         {label:'מוכנות לרילוקציה',value:q('relocation')},
         {label:'משרה מלאה',value:q('fullTime')},
         {label:'רשיון נהיגה',value:q('license')},
-        {label:'רשיון C',value:q('licenseC')}
+        {label:'רשיון C',value:q('licenseC')},
+        {label:'ימי התלבטות',value:q('hesitationDays')}
       ]},
       {title:'מצב רפואי',fields:[
         {label:'מצב רפואי (ניתוחים/תרופות/פציעות)',value:q('medical'),detail:q('medicalDetail')},
         {label:'כושר גופני',value:q('fitness')},
-        {label:'פציעת צה"ל',value:q('idfInjury')},
+        {label:'פציעת צה"ל',value:q('idfInjury'),detail:q('idfInjuryDetail')},
         {label:'בעיות ראייה/עיוורון',value:q('vision'),detail:q('visionDetail')},
         {label:'פרופיל צבאי',value:q('idfProfile')},
         {label:'סממנים ייחודיים',value:q('tattoos')},
@@ -191,7 +193,7 @@ var Stage2={
       ]}
     ];
     try{
-      var blob=DocxBuilder.build(c.name,sections,q('grade'),q('result'),q('notes'));
+      var blob=DocxBuilder.build(c.name,sections,q('grade'),q('result'),q('notes'),q('rejectionReason'));
       var fn='questionnaire_'+c.name.replace(/\s/g,'_')+'_'+Utils.today()+'.docx';
       if(window.cordova&&window.cordova.file){
         // Write blob to cache and share
