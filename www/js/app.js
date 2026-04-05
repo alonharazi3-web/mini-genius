@@ -2,7 +2,17 @@
 const App={
   currentJob:null,currentStage:1,settings:{},_dirty:{},_saveTimer:null,
 
+  _PIN:'9832339',
+  _unlocked:false,
+
   async init(){
+    // v3.4 #6: PIN lock — once per session only
+    if(App._unlocked){App._afterUnlock();return;}
+    App._showPinLock();
+  },
+
+  async _afterUnlock(){
+    App._unlocked=true;
     setTimeout(function(){var sp=Utils.id('splashScreen');if(sp)sp.classList.add('hide');
       setTimeout(function(){if(sp)sp.remove();},600);},2500);
     _dbg('App.init start');
@@ -52,14 +62,62 @@ const App={
     document.addEventListener('resume',function(){
       _dbg('APP RESUME');
     },false);
-    // Also handle browser visibility change
     document.addEventListener('visibilitychange',function(){
       if(document.hidden){_dbg('HIDDEN — flushing');App.flushDirty();}
     },false);
-    // Save before page unload
     window.addEventListener('beforeunload',function(){App.flushDirty();});
-
     _dbg('App.init done');
+  },
+
+  // v3.4 #6: PIN Lock
+  _showPinLock:function(){
+    var overlay=document.createElement('div');
+    overlay.id='pinOverlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:#1B2A4A;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML='<img src="img/icon.png" style="width:80px;height:80px;border-radius:16px;margin-bottom:16px;">'
+    +'<div style="color:#fff;font-size:1.2rem;font-weight:700;margin-bottom:8px;">Mini Genius</div>'
+    +'<div style="color:#aaa;font-size:.85rem;margin-bottom:24px;">הזן קוד PIN</div>'
+    +'<div id="pinDots" style="display:flex;gap:12px;margin-bottom:24px;"></div>'
+    +'<div id="pinPad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:260px;width:100;"></div>'
+    +'<div id="pinError" style="color:#E74C3C;font-size:.85rem;margin-top:16px;min-height:20px;"></div>';
+    document.body.appendChild(overlay);
+
+    var entered='';var pinLen=App._PIN.length;
+    function updateDots(){
+      var dotsHtml='';
+      for(var i=0;i<pinLen;i++){
+        dotsHtml+='<div style="width:14px;height:14px;border-radius:50%;background:'+(i<entered.length?'#4A90D9':'#555')+';"></div>';
+      }
+      Utils.id('pinDots').innerHTML=dotsHtml;
+    }
+    function press(n){
+      if(entered.length>=pinLen)return;
+      entered+=n;updateDots();
+      if(entered.length===pinLen){
+        if(entered===App._PIN){
+          overlay.style.transition='opacity .3s';overlay.style.opacity='0';
+          setTimeout(function(){overlay.remove();App._afterUnlock();},300);
+        }else{
+          entered='';
+          Utils.id('pinError').textContent='קוד שגוי — נסה שוב';
+          updateDots();
+          setTimeout(function(){Utils.id('pinError').textContent='';},2000);
+        }
+      }
+    }
+    var pad=Utils.id('pinPad');
+    var btnStyle='background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:12px;padding:16px;font-size:1.4rem;font-weight:700;cursor:pointer;';
+    for(var i=1;i<=9;i++){
+      var b=document.createElement('button');b.textContent=i;b.style.cssText=btnStyle;
+      b.onclick=(function(n){return function(){press(String(n));};})(i);
+      pad.appendChild(b);
+    }
+    var empty=document.createElement('div');pad.appendChild(empty);
+    var b0=document.createElement('button');b0.textContent='0';b0.style.cssText=btnStyle;
+    b0.onclick=function(){press('0');};pad.appendChild(b0);
+    var bdel=document.createElement('button');bdel.textContent='⌫';bdel.style.cssText=btnStyle;
+    bdel.onclick=function(){entered=entered.slice(0,-1);updateDots();};pad.appendChild(bdel);
+    updateDots();
   },
 
   // FIX #4: Mark field dirty + debounced save (500ms)

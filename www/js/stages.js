@@ -203,7 +203,7 @@ const Stages={
       html+='<input type="time" class="form-input" value="08:20" disabled style="opacity:.7;"><div class="card-meta">שעה קבועה 08:20</div>';
       if(!c.stage5_time)Stages.saveField(c.id,'stage5_time','08:20');
     }else{
-      html+='<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value)">';
+      html+='<input type="time" class="form-input" value="'+(c['stage'+stageId+'_time']||'')+'" onchange="Stages.saveField(\''+c.id+'\',\'stage'+stageId+'_time\',this.value);Stages._autoCalendar(\''+c.id+'\','+stageId+',null)">';
     }
     html+='</div>';
     if(stageId===6){
@@ -225,13 +225,20 @@ const Stages={
     return html;
   },
 
-  // v3.3: Auto-add to calendar when date is set
+  // v3.4: Auto-add to calendar when BOTH date AND time are set
   async _autoCalendar(id,stageId,date){
-    if(!date)return;
     var c=await DB.getCandidate(id);if(!c)return;
-    var time=c['stage'+stageId+'_time']||'09:00';
-    var stageName=Utils.getStageName(stageId);
-    await Calendar.createFromCandidate(id,stageName,date,time,stageId);
+    var dateField=stageId===3?'stage3_examDate':('stage'+stageId+'_date');
+    date=date||c[dateField];
+    if(!date)return;
+    var time=c['stage'+stageId+'_time'];
+    var duration=Calendar.STAGE_DURATIONS[stageId];
+    if(duration===null){
+      await Calendar.createFromCandidate(id,Utils.getStageName(stageId),date,'09:00',stageId);
+      return;
+    }
+    if(!time)return;
+    await Calendar.createFromCandidate(id,Utils.getStageName(stageId),date,time,stageId);
   },
 
   async sendInvite(id,stageId){

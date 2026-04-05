@@ -93,7 +93,7 @@ var Sync={
     var token=(Utils.id('pasteToken')?.value||'').trim();
     if(!token||token.length<20){Utils.toast('טוקן לא תקין','danger');return;}
     Sync._token=token;
-    Sync._tokenExpiry=Date.now()+(3600*1000); // 1 hour
+    Sync._tokenExpiry=Date.now()+(30*24*3600*1000); // 30 days
     await DB.setSetting('gdrive_token',token);
     await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
     App.settings.gdrive_token=token;
@@ -147,8 +147,9 @@ var Sync={
     var resp=await fetch(url,opts);
     if(resp.status===401){
       Sync._token=null;
-      Utils.toast('פג תוקף ההתחברות — היכנס מחדש','warning');
-      throw new Error('Token expired');
+      // Auto-prompt reconnect instead of just failing
+      Sync._showTokenPasteDialog();
+      throw new Error('Token expired — reconnecting');
     }
     return resp;
   },
@@ -274,6 +275,12 @@ var Sync={
       for(var i=0;i<(remote.candidates||[]).length;i++){
         await DB.put('candidates',remote.candidates[i]);
       }
+      // Replace jobs
+      var localJobs=await DB.getAllJobs();
+      for(var i=0;i<localJobs.length;i++)await DB.del('jobs',localJobs[i].id);
+      for(var i=0;i<(remote.jobs||[]).length;i++){
+        await DB.put('jobs',remote.jobs[i]);
+      }
       // Replace tasks
       var localTasks=await DB.getAllTasks();
       for(var i=0;i<localTasks.length;i++)await DB.del('tasks',localTasks[i].id);
@@ -359,10 +366,11 @@ var Sync={
         Sync._mergeStats=mergeStats;
         Sync._remoteTasks=remote.tasks||[];
         Sync._remoteEvents=remote.events||[];
+        Sync._remoteJobs=remote.jobs||[];
         Sync._conflictIdx=0;
         Sync._showConflict();
       }else{
-        await Sync._finalizeMerge(merged,mergeStats,remote.tasks||[],remote.events||[]);
+        await Sync._finalizeMerge(merged,mergeStats,remote.tasks||[],remote.events||[],remote.jobs||[]);
       }
     }catch(e){
       _dbg('Sync err: '+e);
@@ -370,12 +378,12 @@ var Sync={
     }
   },
 
-  _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_remoteEvents:[],_conflictIdx:0,
+  _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_remoteEvents:[],_remoteJobs:[],_conflictIdx:0,
 
   _showConflict:function(){
     var idx=Sync._conflictIdx;
     if(idx>=Sync._conflicts.length){
-      Sync._finalizeMerge(Sync._merged,Sync._mergeStats,Sync._remoteTasks,Sync._remoteEvents);
+      Sync._finalizeMerge(Sync._merged,Sync._mergeStats,Sync._remoteTasks,Sync._remoteEvents,Sync._remoteJobs);
       return;
     }
     var c=Sync._conflicts[idx];var lc=c.local;var rc=c.remote;
@@ -415,7 +423,7 @@ var Sync={
     Sync._showConflict();
   },
 
-  async _finalizeMerge(merged,stats,remoteTasks,remoteEvents){
+  async _finalizeMerge(merged,stats,remoteTasks,remoteEvents,remoteJobs){
     // 1. Save ALL merged candidates to local DB
     var localAll=await DB.getAllCandidates();
     var localIds={};localAll.forEach(function(c){localIds[c.id]=true;});
@@ -424,6 +432,13 @@ var Sync={
     for(var i=0;i<merged.length;i++){
       var c=merged[i];
       await DB.put('candidates',c);
+    }
+
+    // 1b. Merge jobs
+    var localJobs=await DB.getAllJobs();
+    var localJobIds={};localJobs.forEach(function(j){localJobIds[j.id]=true;});
+    for(var i=0;i<(remoteJobs||[]).length;i++){
+      if(!localJobIds[remoteJobs[i].id])await DB.put('jobs',remoteJobs[i]);
     }
 
     // 2. Merge tasks

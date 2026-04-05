@@ -22,13 +22,26 @@ async getAll(st){return this._tx(st,'readonly',s=>s.getAll())},
 async del(st,k){return this._tx(st,'readwrite',s=>s.delete(k))},
 async getByIdx(st,idx,val){return new Promise((res,rej)=>{const tx=this._db.transaction(st,'readonly');
 const r=tx.objectStore(st).index(idx).getAll(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);})},
+// v3.4 #7: Simple encryption for names/phones
+_encKey:'MG2026',
+_enc:function(s){if(!s||s.startsWith('🔒'))return s;var k=DB._encKey;var r='🔒';
+for(var i=0;i<s.length;i++){r+=String.fromCharCode(s.charCodeAt(i)^k.charCodeAt(i%k.length));}
+return r;},
+_dec:function(s){if(!s||!s.startsWith('🔒'))return s||'';var k=DB._encKey;var r='';
+s=s.substring(2);for(var i=0;i<s.length;i++){r+=String.fromCharCode(s.charCodeAt(i)^k.charCodeAt(i%k.length));}
+return r;},
+_encCandidate:function(c){var e=Object.assign({},c);
+e.name=DB._enc(c.name);e.fullName=DB._enc(c.fullName||'');e.phone=DB._enc(c.phone);return e;},
+_decCandidate:function(c){if(!c)return c;c.name=DB._dec(c.name);c.fullName=DB._dec(c.fullName);c.phone=DB._dec(c.phone);return c;},
+_decAll:function(arr){return(arr||[]).map(function(c){return DB._decCandidate(c);});},
+
 async saveCandidate(c){c.updatedAt=new Date().toISOString();
 if(!c.id){c.id='c_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);c.createdAt=c.updatedAt;}
-await this.put('candidates',c);return c;},
-async getCandidate(id){return this.get('candidates',id)},
-async getByStage(stage,jobId){const a=await this.getByIdx('candidates','stage',stage);return jobId?a.filter(c=>c.jobId===jobId):a;},
-async getAllCandidates(){return this.getAll('candidates')},
-async findDups(phone){return this.getByIdx('candidates','phone',phone)},
+var enc=DB._encCandidate(c);await this.put('candidates',enc);return c;},
+async getCandidate(id){var c=await this.get('candidates',id);return DB._decCandidate(c);},
+async getByStage(stage,jobId){const a=await this.getByIdx('candidates','stage',stage);var d=DB._decAll(a);return jobId?d.filter(c=>c.jobId===jobId):d;},
+async getAllCandidates(){var a=await this.getAll('candidates');return DB._decAll(a);},
+async findDups(phone){var all=await this.getAllCandidates();return all.filter(c=>c.phone===phone);},
 async getFrozen(jobId){const all=await this.getAllCandidates();return all.filter(c=>c.status==='frozen'&&(!jobId||c.jobId===jobId));},
 async getSetting(k){const r=await this.get('settings',k);return r?r.value:null},
 async setSetting(k,v){await this.put('settings',{key:k,value:v,updatedAt:new Date().toISOString()})},

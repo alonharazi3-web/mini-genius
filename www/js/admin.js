@@ -196,14 +196,16 @@ const Admin={
     var tasks=await DB.getAllTasks();
     var daylog=await DB.getAll('daylog');
     var files=await DB.getAll('files');
-    _dbg('Export: '+candidates.length+' candidates, '+settingsRows.length+' settings, '+jobs.length+' jobs');
+    var events=await DB.getAllEvents();
+    _dbg('Export: '+candidates.length+' candidates, '+events.length+' events, '+settingsRows.length+' settings');
 
     var data={
-      version:'3.2',
+      version:'3.4',
       exportDate:new Date().toISOString(),
       candidates:candidates,
       jobs:jobs,
       tasks:tasks,
+      events:events,
       daylog:daylog,
       files:files,
       // Raw settings rows — each is {key:'xxx', value:'yyy', updatedAt:'...'}

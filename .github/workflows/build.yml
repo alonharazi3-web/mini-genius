@@ -21,12 +21,13 @@ jobs:
       - run: npm install -g cordova
       - run: npm install
       - run: cordova platform add android || true
-      - run: cordova build android --debug
+      - run: cordova build android --release --buildConfig=build.json
       - run: |
-          APK=$(find platforms/android -name "*.apk" -type f | head -1)
-          cp "$APK" "mini-genius-debug.apk"
+          APK=$(find platforms/android -name "*release*" -o -name "*signed*" | grep "\.apk" | head -1)
+          if [ -z "$APK" ]; then APK=$(find platforms/android -name "*.apk" -type f | head -1); fi
+          cp "$APK" "mini-genius-release.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: mini-genius-debug
-          path: mini-genius-debug.apk
+          name: mini-genius-release
+          path: mini-genius-release.apk
           retention-days: 90

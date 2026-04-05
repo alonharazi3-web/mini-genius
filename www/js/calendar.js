@@ -144,7 +144,9 @@ var Calendar={
     +'<div class="form-group" style="flex:1;"><label class="form-label">סיום</label>'
     +'<input class="form-input" id="evTimeEnd" type="time" value="'+Calendar._addMin(time,60)+'"></div></div></div>'
     +'<div class="form-group"><label class="form-label">👤 מועמד</label>'
-    +'<input class="form-input" id="evCandidate" placeholder="שם מועמד"></div>'
+    +'<input class="form-input" id="evCandidate" placeholder="הקלד שם מועמד..." oninput="Calendar._searchCandidate(this.value)">'
+    +'<input type="hidden" id="evCandidateId">'
+    +'<div id="evCandidateResults" style="max-height:120px;overflow-y:auto;"></div></div>'
     +'<div class="form-group"><label class="form-label">👥 משתתפים / מזומנים</label>'
     +'<input class="form-input" id="evParticipants" placeholder="שמות"></div>'
     +'<div class="form-group"><label class="form-label">📍 חדר / מיקום</label>'
@@ -176,6 +178,31 @@ var Calendar={
 
   _pick:function(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
 
+  // v3.4: Candidate autocomplete search
+  async _searchCandidate(q){
+    var resultsEl=Utils.id('evCandidateResults');
+    if(!resultsEl)return;
+    if(!q||q.length<2){resultsEl.innerHTML='';return;}
+    var all=await DB.getAllCandidates();
+    var matches=all.filter(function(c){
+      return(c.fullName||c.name||'').toLowerCase().includes(q.toLowerCase())||
+        (c.name||'').toLowerCase().includes(q.toLowerCase());
+    }).slice(0,5);
+    if(!matches.length){resultsEl.innerHTML='<div style="font-size:.75rem;color:var(--text-light);padding:4px;">לא נמצא</div>';return;}
+    var html='';
+    matches.forEach(function(c){
+      html+='<div onclick="Calendar._selectCandidate(\''+c.id+'\',\''+Utils.escHtml(Utils.displayName(c))+'\')" '
+      +'style="padding:6px 8px;border-bottom:1px solid #eee;cursor:pointer;font-size:.82rem;">'
+      +Utils.escHtml(Utils.displayName(c))+' <span style="color:var(--text-light);">'+Utils.getStageName(c.stage)+'</span></div>';
+    });
+    resultsEl.innerHTML=html;
+  },
+  _selectCandidate:function(id,name){
+    Utils.id('evCandidate').value=name;
+    Utils.id('evCandidateId').value=id;
+    Utils.id('evCandidateResults').innerHTML='';
+  },
+
   async saveEvent(existingId){
     var title=Utils.id('evTitle')?.value?.trim();
     if(!title){Utils.toast('נא למלא כותרת','danger');return;}
@@ -190,6 +217,7 @@ var Calendar={
       time:isDayTitle?'':Utils.id('evTime')?.value||'09:00',
       timeEnd:isDayTitle?'':Utils.id('evTimeEnd')?.value||'',
       candidateName:Utils.id('evCandidate')?.value||'',
+      candidateId:Utils.id('evCandidateId')?.value||'',
       participants:Utils.id('evParticipants')?.value||'',
       room:Utils.id('evRoom')?.value||'',
       attendance:attendEl?attendEl.dataset.val:'none',
