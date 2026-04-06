@@ -44,12 +44,6 @@ jobs:
               platforms/android/app/src/main/AndroidManifest.xml
           fi
 
-          # Ensure androidx.core dependency for NotificationCompat
-          if ! grep -q "androidx.core:core" platforms/android/app/build.gradle; then
-            sed -i '/dependencies {/a \    implementation "androidx.core:core:1.12.0"' \
-              platforms/android/app/build.gradle
-          fi
-
           echo "✅ Plugin installed manually"
       - run: cordova build android --debug
       - name: Find and copy APK

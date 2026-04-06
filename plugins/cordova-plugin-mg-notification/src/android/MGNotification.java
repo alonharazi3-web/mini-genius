@@ -1,14 +1,11 @@
 package com.recruit.minigenius;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
-
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CallbackContext;
@@ -16,7 +13,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 
 public class MGNotification extends CordovaPlugin {
-    
+
     private static final String CHANNEL_ID = "mg_calendar";
     private static final int NOTIFICATION_ID = 999;
 
@@ -37,63 +34,49 @@ public class MGNotification extends CordovaPlugin {
     private void showNotification(String title, String text, CallbackContext callbackContext) {
         try {
             Context context = cordova.getActivity().getApplicationContext();
-            
-            // Create notification channel (Android 8+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Mini Genius Calendar",
-                    NotificationManager.IMPORTANCE_LOW // No sound, visible on lock screen
-                );
-                channel.setDescription("Today's calendar appointments");
-                channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-                channel.setShowBadge(true);
-                
-                NotificationManager nm = context.getSystemService(NotificationManager.class);
-                if (nm != null) {
-                    nm.createNotificationChannel(channel);
-                }
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) {
+                callbackContext.error("NotificationManager not available");
+                return;
             }
 
-            // Intent to open app when notification is tapped
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "Mini Genius Calendar",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Today's calendar appointments");
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            channel.setShowBadge(true);
+            nm.createNotificationChannel(channel);
+
             Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-            if (intent == null) {
-                intent = new Intent();
-            }
+            if (intent == null) intent = new Intent();
             intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            
-            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                flags |= PendingIntent.FLAG_IMMUTABLE;
-            }
-            PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, flags);
+            PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-            // Build notification with InboxStyle for multiple lines
-            NotificationCompat.InboxStyle inboxStyle = new NotificationCompat.InboxStyle();
+            Notification.InboxStyle inboxStyle = new Notification.InboxStyle();
             String[] lines = text.split("\n");
             for (String line : lines) {
-                if (!line.trim().isEmpty()) {
-                    inboxStyle.addLine(line.trim());
-                }
+                if (!line.trim().isEmpty()) inboxStyle.addLine(line.trim());
             }
             inboxStyle.setSummaryText("Mini Genius");
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+            Notification notification = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_my_calendar)
                 .setContentTitle(title)
                 .setContentText(lines.length > 0 ? lines[0] : text)
                 .setStyle(inboxStyle)
-                .setOngoing(true)              // Can't be swiped away
+                .setOngoing(true)
                 .setAutoCancel(false)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Show on lock screen
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setContentIntent(pendingIntent)
-                .setCategory(NotificationCompat.CATEGORY_EVENT);
+                .setCategory(Notification.CATEGORY_EVENT)
+                .build();
 
-            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
-            notificationManager.notify(NOTIFICATION_ID, builder.build());
-            
-            callbackContext.success("Notification shown");
+            nm.notify(NOTIFICATION_ID, notification);
+            callbackContext.success("OK");
         } catch (Exception e) {
             callbackContext.error("Error: " + e.getMessage());
         }
@@ -102,9 +85,9 @@ public class MGNotification extends CordovaPlugin {
     private void clearNotification(CallbackContext callbackContext) {
         try {
             Context context = cordova.getActivity().getApplicationContext();
-            NotificationManagerCompat nm = NotificationManagerCompat.from(context);
-            nm.cancel(NOTIFICATION_ID);
-            callbackContext.success("Notification cleared");
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(NOTIFICATION_ID);
+            callbackContext.success("OK");
         } catch (Exception e) {
             callbackContext.error("Error: " + e.getMessage());
         }
