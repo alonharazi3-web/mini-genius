@@ -26,7 +26,8 @@ jobs:
           cp debug.keystore ~/.android/debug.keystore
       - run: cordova platform add android || true
       - name: Install custom notification plugin
-        run: cordova plugin add $GITHUB_WORKSPACE/plugins/cordova-plugin-mg-notification
+        run: |
+          cordova plugin add ./plugins/cordova-plugin-mg-notification --nofetch --force
       - run: cordova build android --debug
       - name: Find and copy APK
         run: |
