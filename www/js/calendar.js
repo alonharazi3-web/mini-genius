@@ -506,10 +506,22 @@ var Calendar={
     var timed=events.filter(function(ev){return!ev.dayTitle&&ev.time;});
     timed.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
 
-    if(!window.MGNotification){_dbg('MGNotification plugin not available');return;}
+    if(!window.MGNotification){
+      _dbg('MGNotification plugin not available yet');
+      // Retry in 5 seconds
+      setTimeout(function(){Calendar.updateNotification();},5000);
+      return;
+    }
 
     if(!timed.length){
-      MGNotification.clear();
+      // No timed events — show day titles if any, otherwise clear
+      var dayTitles=events.filter(function(ev){return ev.dayTitle;});
+      if(dayTitles.length){
+        var dtText=dayTitles.map(function(ev){return ev.title;}).join('\n');
+        MGNotification.show('📅 היום',dtText);
+      }else{
+        MGNotification.clear();
+      }
       return;
     }
 
@@ -531,11 +543,11 @@ var Calendar={
     _dbg('Lock screen notification: '+timed.length+' events');
   },
 
-  // Start periodic notification updates
+  // Start periodic notification updates — aggressive, never disappears
   _startNotificationUpdates:function(){
     // Update immediately
     Calendar.updateNotification();
-    // Update every 5 minutes
-    setInterval(function(){Calendar.updateNotification();},5*60*1000);
+    // Update every 60 seconds (was 5 min)
+    setInterval(function(){Calendar.updateNotification();},60*1000);
   }
 };

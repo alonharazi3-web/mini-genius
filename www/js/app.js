@@ -58,6 +58,7 @@ const App={
     // Save when app goes to background (WhatsApp, phone call, etc.)
     document.addEventListener('pause',function(){
       _dbg('APP PAUSE — flushing + backup');App.flushDirty();App.autoBackup();
+      Calendar.updateNotification();
     },false);
     document.addEventListener('resume',function(){
       _dbg('APP RESUME');
@@ -65,6 +66,7 @@ const App={
     },false);
     document.addEventListener('visibilitychange',function(){
       if(document.hidden){_dbg('HIDDEN — flushing');App.flushDirty();}
+      Calendar.updateNotification();
     },false);
     window.addEventListener('beforeunload',function(){App.flushDirty();});
     _dbg('App.init done');

@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
 import android.os.Build;
 
 import org.apache.cordova.CordovaPlugin;
@@ -18,6 +19,7 @@ public class MGNotification extends CordovaPlugin {
 
     private static final String CHANNEL_ID = "mg_calendar";
     private static final int NOTIFICATION_ID = 999;
+    private static final String GROUP_KEY = "mg_today";
     private static final int PERMISSION_REQUEST_CODE = 100;
     private CallbackContext permissionCallback;
 
@@ -39,7 +41,6 @@ public class MGNotification extends CordovaPlugin {
     }
 
     private void requestNotificationPermission(CallbackContext callbackContext) {
-        // Android 13+ (API 33) requires runtime permission for notifications
         if (Build.VERSION.SDK_INT >= 33) {
             if (cordova.getActivity().checkSelfPermission("android.permission.POST_NOTIFICATIONS")
                     != PackageManager.PERMISSION_GRANTED) {
@@ -48,7 +49,6 @@ public class MGNotification extends CordovaPlugin {
                 return;
             }
         }
-        // Already granted or pre-Android 13
         callbackContext.success("granted");
     }
 
@@ -73,7 +73,6 @@ public class MGNotification extends CordovaPlugin {
                 return;
             }
 
-            // Check permission on Android 13+
             if (Build.VERSION.SDK_INT >= 33) {
                 if (cordova.getActivity().checkSelfPermission("android.permission.POST_NOTIFICATIONS")
                         != PackageManager.PERMISSION_GRANTED) {
@@ -82,16 +81,18 @@ public class MGNotification extends CordovaPlugin {
                 }
             }
 
-            // Create channel with IMPORTANCE_DEFAULT (shows on Samsung lock screen)
+            // Channel: IMPORTANCE_HIGH forces expanded on lock screen
+            // Sound + vibration disabled to keep it silent
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Mini Genius - לוז יומי",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             );
             channel.setDescription("Today's calendar appointments");
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             channel.setShowBadge(true);
             channel.enableVibration(false);
+            channel.setVibrationPattern(null);
             channel.setSound(null, null);
             nm.createNotificationChannel(channel);
 
@@ -102,13 +103,14 @@ public class MGNotification extends CordovaPlugin {
             PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-            // InboxStyle for multiple lines
-            Notification.InboxStyle inboxStyle = new Notification.InboxStyle();
+            // Build expanded InboxStyle
             String[] lines = text.split("\n");
+            Notification.InboxStyle inboxStyle = new Notification.InboxStyle();
+            inboxStyle.setBigContentTitle(title);
             for (String line : lines) {
                 if (!line.trim().isEmpty()) inboxStyle.addLine(line.trim());
             }
-            inboxStyle.setSummaryText("Mini Genius");
+            inboxStyle.setSummaryText(lines.length + " אירועים");
 
             Notification notification = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_my_calendar)
@@ -117,12 +119,19 @@ public class MGNotification extends CordovaPlugin {
                 .setStyle(inboxStyle)
                 .setOngoing(true)
                 .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setContentIntent(pendingIntent)
                 .setCategory(Notification.CATEGORY_EVENT)
+                .setGroup(GROUP_KEY)
+                .setGroupSummary(true)
+                .setNumber(lines.length)
                 .build();
 
+            // Force persistence flags
+            notification.flags |= Notification.FLAG_ONGOING_EVENT | Notification.FLAG_NO_CLEAR;
             nm.notify(NOTIFICATION_ID, notification);
+            
             callbackContext.success("OK");
         } catch (Exception e) {
             callbackContext.error("Error: " + e.getMessage());
