@@ -1,27 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        xmlns:android="http://schemas.android.com/apk/res/android"
         id="cordova-plugin-mg-notification"
         version="1.0.0">
     <name>MG Notification</name>
     <description>Persistent lock screen notification for Mini Genius calendar</description>
-    
+
     <js-module src="www/MGNotification.js" name="MGNotification">
         <clobbers target="MGNotification" />
     </js-module>
-    
+
     <platform name="android">
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="MGNotification">
                 <param name="android-package" value="com.recruit.minigenius.MGNotification"/>
             </feature>
         </config-file>
-        
+
         <config-file target="AndroidManifest.xml" parent="/*">
             <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
         </config-file>
 
         <source-file src="src/android/MGNotification.java" target-dir="src/com/recruit/minigenius"/>
-        
+
         <framework src="androidx.core:core:1.12.0"/>
     </platform>
 </plugin>
