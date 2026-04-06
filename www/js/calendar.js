@@ -30,6 +30,8 @@ var Calendar={
     Calendar._weekStart.setDate(now.getDate()-now.getDay());
     Calendar._weekStart.setHours(0,0,0,0);
     setInterval(function(){Calendar._checkReminders();},60000);
+    // v3.4: Persistent lock screen notification
+    Calendar._startNotificationUpdates();
   },
 
   // ===== WEEKLY VIEW — Vertical day cards =====
@@ -232,7 +234,9 @@ var Calendar={
     }
     await DB.saveEvent(ev);
     DB.logAction('אירוע',ev.title+' '+ev.date+' '+(ev.time||'יום שלם'));
-    Stages.closeModal();Utils.toast('אירוע נשמר','success');Calendar.render();
+    Stages.closeModal();Utils.toast('אירוע נשמר','success');
+    Calendar.updateNotification();
+    Calendar.render();
   },
 
   // ===== VIEW EVENT =====
@@ -284,7 +288,7 @@ var Calendar={
     },100);
   },
 
-  async deleteEvent(id){if(!confirm('למחוק אירוע?'))return;await DB.delEvent(id);Stages.closeModal();Utils.toast('נמחק','success');Calendar.render();},
+  async deleteEvent(id){if(!confirm('למחוק אירוע?'))return;await DB.delEvent(id);Stages.closeModal();Utils.toast('נמחק','success');Calendar.updateNotification();Calendar.render();},
 
   // ===== CREATE FROM CANDIDATE with auto-duration =====
   async createFromCandidate(candidateId,stageName,date,time,stageId){
@@ -313,6 +317,7 @@ var Calendar={
       ev.reminderAt=new Date(dt.getTime()-ev.reminderMin*60000).toISOString();
     }
     await DB.saveEvent(ev);DB.logAction('אירוע ביומן',ev.title);
+    Calendar.updateNotification();
     Utils.toast('נוסף ליומן: '+(isDayTitle?'כותרת יום':''+ev.time+'-'+ev.timeEnd),'success');
   },
 
@@ -363,7 +368,7 @@ var Calendar={
       var ev=Calendar._pendingIcs[i];ev.reminderMin=15;ev.color='#4A90D9';ev.attendance='none';
       await DB.saveEvent(ev);
     }
-    Stages.closeModal();Utils.toast('יובאו '+Calendar._pendingIcs.length+' אירועים','success');Calendar.render();
+    Stages.closeModal();Utils.toast('יובאו '+Calendar._pendingIcs.length+' אירועים','success');Calendar.updateNotification();Calendar.render();
   },
 
   _parseIcs:function(text){
@@ -485,5 +490,66 @@ var Calendar={
   _getWeekNumber:function(d){var o=new Date(d.getFullYear(),0,1);return Math.ceil(((d-o)/864e5+o.getDay()+1)/7);},
   _toIcsDate:function(d,t){return d.replace(/-/g,'')+'T'+(t||'09:00').replace(':','')+'00';},
   _parseIcsDate:function(v){var m=v.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);return m?{date:m[1]+'-'+m[2]+'-'+m[3],time:m[4]+':'+m[5]}:null;},
-  _icsEsc:function(s){return(s||'').replace(/[,;\\]/g,function(c){return'\\'+c;}).replace(/\n/g,'\\n');}
+  _icsEsc:function(s){return(s||'').replace(/[,;\\]/g,function(c){return'\\'+c;}).replace(/\n/g,'\\n');},
+
+  // ===== PERSISTENT NOTIFICATION — today's appointments on lock screen =====
+  _notifId:999,
+
+  async updateNotification(){
+    if(!window.cordova||!cordova.plugins||!cordova.plugins.notification||!cordova.plugins.notification.local)return;
+    var todayStr=Calendar._dateStr(new Date());
+    var events=await DB.getEventsByDate(todayStr);
+    var timed=events.filter(function(ev){return!ev.dayTitle&&ev.time;});
+    timed.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
+
+    if(!timed.length){
+      // No events — clear notification
+      cordova.plugins.notification.local.cancel(Calendar._notifId);
+      return;
+    }
+
+    // Build notification text
+    var title='📅 היום — '+timed.length+' אירועים';
+    var lines=[];
+    timed.forEach(function(ev){
+      var line=ev.time;
+      if(ev.timeEnd)line+='–'+ev.timeEnd;
+      line+=' '+ev.title;
+      if(ev.candidateName)line+=' ('+ev.candidateName+')';
+      if(ev.room)line+=' 📍'+ev.room;
+      lines.push(line);
+    });
+    var text=lines.join('\n');
+
+    // Day titles
+    var dayTitles=events.filter(function(ev){return ev.dayTitle;});
+    if(dayTitles.length){
+      title+=' | '+dayTitles.map(function(ev){return ev.title;}).join(', ');
+    }
+
+    cordova.plugins.notification.local.schedule({
+      id:Calendar._notifId,
+      title:title,
+      text:text,
+      ongoing:true,       // Can't be swiped away
+      sticky:true,        // Persists
+      lockscreen:true,    // Show on lock screen
+      priority:1,
+      foreground:true,
+      smallIcon:'res://icon',
+      icon:'res://icon',
+      channel:'calendar',
+      group:'minigenius-calendar',
+      summary:timed.length+' אירועים היום'
+    });
+    _dbg('Notification updated: '+timed.length+' events');
+  },
+
+  // Start periodic notification updates
+  _startNotificationUpdates:function(){
+    // Update immediately
+    Calendar.updateNotification();
+    // Update every 5 minutes
+    setInterval(function(){Calendar.updateNotification();},5*60*1000);
+  }
 };

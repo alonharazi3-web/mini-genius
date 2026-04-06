@@ -38,10 +38,12 @@ const Stage1={
     +'<input class="form-input" id="fReminder" type="datetime-local" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">רכז מטפל <span class="required">*</span></label>'
     +'<select class="form-select" id="fRecruiter" onchange="Stage1._saveDraft()"><option value="">בחר...</option></select></div>'
+    +'<div class="form-group"><label class="form-label">💼 מחזור גיוס</label>'
+    +'<select class="form-select" id="fJobId" onchange="Stage1._saveDraft()"></select></div>'
     +'<div id="dupWarning" style="display:none;" class="warn-box">⚠️ מועמד עם אותו מספר טלפון כבר קיים</div>'
     +'<button class="btn btn-primary" style="width:100%;margin:16px 0;" onclick="Stage1.save()">שמור</button>'
     +'</div></div>';
-    page.innerHTML=html;this._loadRecruiters();
+    page.innerHTML=html;this._loadRecruiters();this._loadJobs();
     // FIX #1 v2.5: Restore draft if exists
     Stage1._restoreDraft();
     Utils.id('fPhone').addEventListener('blur',async function(){
@@ -69,6 +71,15 @@ const Stage1={
     var sel=Utils.id('fRecruiter');var recs=JSON.parse(App.settings.recruiters||'[]');
     recs.forEach(function(r){var o=document.createElement('option');o.value=r;o.textContent=r;sel.appendChild(o);});
   },
+  async _loadJobs(){
+    var sel=Utils.id('fJobId');if(!sel)return;
+    var jobs=await DB.getAllJobs();
+    jobs.forEach(function(j){
+      var o=document.createElement('option');o.value=j.id;o.textContent=j.name;
+      if(j.id===App.currentJob)o.selected=true;
+      sel.appendChild(o);
+    });
+  },
   async save(){
     var name=Utils.id('fName')?.value?.trim();var phone=Utils.id('fPhone')?.value?.trim();
     var recruiter=Utils.id('fRecruiter')?.value;
@@ -78,10 +89,11 @@ const Stage1={
     if(active)priority=active.dataset.val;
     var recEl=document.querySelector('#fRec .radio-btn.active');
     var recommendation=recEl?recEl.dataset.val:'';
+    var selectedJob=Utils.id('fJobId')?.value||App.currentJob;
     var c={name:name,fullName:Utils.id('fFullName')?.value?.trim()||name,phone:phone,stage:1,status:'active',priority:priority,
       referrer:Utils.id('fReferrer')?.value||'',notes:Utils.id('fNotes')?.value||'',
       recommendation:recommendation,
-      recruiter:recruiter,jobId:App.currentJob,stageEnteredAt:new Date().toISOString()};
+      recruiter:recruiter,jobId:selectedJob,stageEnteredAt:new Date().toISOString()};
     // CV file
     if(Stage1._cvData){
       var fRec=await DB.saveFile({name:Stage1._cvName,data:Stage1._cvData,candidateId:'pending'});

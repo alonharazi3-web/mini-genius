@@ -61,6 +61,7 @@ const App={
     },false);
     document.addEventListener('resume',function(){
       _dbg('APP RESUME');
+      Calendar.updateNotification();
     },false);
     document.addEventListener('visibilitychange',function(){
       if(document.hidden){_dbg('HIDDEN — flushing');App.flushDirty();}
@@ -345,8 +346,9 @@ const App={
     if(listEl)listEl.style.display='none';
     if(!resultsEl)return;
     var all=await DB.getAllCandidates();
+    // v3.4: Search across ALL cycles
     var matches=all.filter(function(c){
-      return(c.jobId===App.currentJob)&&(
+      return(
         (c.name||'').toLowerCase().includes(q)||
         (c.fullName||'').toLowerCase().includes(q)||
         (c.phone||'').includes(q)
@@ -356,14 +358,19 @@ const App={
       resultsEl.innerHTML='<div class="empty-state" style="padding:20px;"><div>לא נמצאו תוצאות</div></div>';
       resultsEl.style.display='block';return;
     }
-    var html='<div style="padding:6px 14px;font-size:.82rem;color:var(--text-light);">'+matches.length+' תוצאות בכל השלבים</div>';
+    // Get job names for display
+    var jobs=await DB.getAllJobs();
+    var jobMap={};jobs.forEach(function(j){jobMap[j.id]=j.name;});
+    var html='<div style="padding:6px 14px;font-size:.82rem;color:var(--text-light);">'+matches.length+' תוצאות בכל השלבים והמחזורים</div>';
     matches.forEach(function(c){
       var dName=Utils.displayName(c);
+      var cycleName=jobMap[c.jobId]||'';
       html+='<div class="card">'
       +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
       +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(dName)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
       +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
-      +'<div class="card-meta" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)+'</div>'
+      +'<div class="card-meta" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)
+      +(cycleName?' | 💼 '+Utils.escHtml(cycleName):'')+'</div>'
       +'<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border);margin-top:6px;">'
       +'<button class="btn btn-outline btn-sm" style="font-size:.78rem;padding:5px 10px;" onclick="event.stopPropagation();App.editCandidate(\''+c.id+'\')">✏️ עריכה</button>'
       +'</div></div>';
@@ -376,10 +383,14 @@ const App={
     var c=await DB.getCandidate(id);if(!c){Utils.toast('לא נמצא','danger');return;}
     var page=Utils.id('mainContent');
     var dName=Utils.displayName(c);
+    // v3.4: Get job name
+    var jobName='';
+    try{var jobs=await DB.getAllJobs();var job=jobs.find(function(j){return j.id===c.jobId;});jobName=job?job.name:'';}catch(e){}
     var html='<div class="page active"><div style="display:flex;align-items:center;gap:10px;padding:14px;">'
     +'<button class="btn btn-outline btn-sm" onclick="App.navigate(\'stage\','+c.stage+')">←</button>'
     +'<div style="flex:1;"><div style="font-size:1.15rem;font-weight:700;">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(dName)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</div>'
     +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+Utils.getStageName(c.stage)
+    +(jobName?' | 💼 '+Utils.escHtml(jobName):'')
     +(c.recommendation?' | '+Utils.REC_LABELS[c.recommendation]:'')+'</div></div>'
     +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>';
     html+='<div style="display:flex;gap:6px;padding:0 14px;flex-wrap:wrap;">'
@@ -428,6 +439,14 @@ const App={
       html+='<option value="'+s.id+'"'+(s.id===c.stage?' selected':'')+'>'+s.icon+' '+s.name+'</option>';
     });
     html+='</select></div>';
+    // v3.4: Recruiting cycle selector
+    var jobs=await DB.getAllJobs();
+    html+='<div class="form-group"><label class="form-label">💼 מחזור גיוס</label>'
+    +'<select class="form-select" id="editJobId">';
+    jobs.forEach(function(j){
+      html+='<option value="'+j.id+'"'+(j.id===c.jobId?' selected':'')+'>'+Utils.escHtml(j.name)+'</option>';
+    });
+    html+='</select></div>';
     // v3.0: Recommendation tag
     var rec=c.recommendation||'';
     html+='<div class="form-group"><label class="form-label">המלצה</label><div class="radio-group" id="editRec">'
@@ -461,6 +480,12 @@ const App={
     if(recEl)c.recommendation=recEl.dataset.val||'';
     if(c.recommendation&&!c.recommendedAt)c.recommendedAt=new Date().toISOString();
     var newStage=parseInt(Utils.id('editStage')?.value);
+    // v3.4: Save job cycle
+    var newJobId=Utils.id('editJobId')?.value;
+    if(newJobId&&newJobId!==c.jobId){
+      var oldJobName=c.jobId;c.jobId=newJobId;
+      DB.logAction('העברת מחזור',c.name+' → '+newJobId);
+    }
     if(newStage&&newStage!==c.stage){
       var oldStage=c.stage;
       c.stage=newStage;c.status='active';c.stageEnteredAt=new Date().toISOString();
@@ -643,9 +668,12 @@ const App={
     var q=function(f){return c['stage2_q_'+f]||'';};
     var html='<div class="modal-title" style="font-size:1rem;">📋 סקירת מועמד — '+Utils.escHtml(c.name)+'</div>';
     // Basic info
+    var jobName='';
+    try{var jobs=await DB.getAllJobs();var job=jobs.find(function(j){return j.id===c.jobId;});jobName=job?job.name:'';}catch(e){}
     html+='<div style="margin-bottom:10px;font-size:.82rem;">'
     +'<div><strong>טלפון:</strong> '+Utils.escHtml(c.phone)+'</div>'
     +'<div><strong>תחנה:</strong> '+Utils.getStageName(c.stage)+' | <strong>סטטוס:</strong> '+Utils.STATUSES[c.status]+'</div>'
+    +(jobName?'<div><strong>💼 מחזור:</strong> '+Utils.escHtml(jobName)+'</div>':'')
     +'<div><strong>עדיפות:</strong> '+(c.priority==='high'?'🔴 גבוה':c.priority==='low'?'🟢 נמוך':'🟠 בינוני')+'</div>';
     if(c.recommendation)html+='<div><strong>המלצה:</strong> '+(Utils.REC_ICONS[c.recommendation]||'')+' '+(Utils.REC_LABELS[c.recommendation]||'')+'</div>';
     if(c.referrer)html+='<div><strong>ממליץ:</strong> '+Utils.escHtml(c.referrer)+'</div>';
