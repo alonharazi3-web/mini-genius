@@ -24,6 +24,7 @@ jobs:
         run: |
           mkdir -p ~/.android
           cp debug.keystore ~/.android/debug.keystore
+      - run: cordova plugin add ./plugins/cordova-plugin-mg-notification || true
       - run: cordova platform add android || true
       - run: cordova build android --debug
       - name: Find and copy APK

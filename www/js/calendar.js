@@ -492,44 +492,36 @@ var Calendar={
   _parseIcsDate:function(v){var m=v.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);return m?{date:m[1]+'-'+m[2]+'-'+m[3],time:m[4]+':'+m[5]}:null;},
   _icsEsc:function(s){return(s||'').replace(/[,;\\]/g,function(c){return'\\'+c;}).replace(/\n/g,'\\n');},
 
-  // ===== PERSISTENT NOTIFICATION — today's appointments shown as sticky bar =====
-  _notifId:999,
-
+  // ===== LOCK SCREEN NOTIFICATION via custom plugin =====
   async updateNotification(){
-    // Remove old notification bar
-    var old=document.getElementById('calNotifBar');
-    if(old)old.remove();
-
     var todayStr=Calendar._dateStr(new Date());
     var events=await DB.getEventsByDate(todayStr);
     var timed=events.filter(function(ev){return!ev.dayTitle&&ev.time;});
     timed.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
 
-    if(!timed.length)return;
+    if(!window.MGNotification){_dbg('MGNotification plugin not available');return;}
 
-    // Build sticky notification bar at top of screen
-    var bar=document.createElement('div');
-    bar.id='calNotifBar';
-    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:95;background:#1B2A4A;color:#fff;'
-    +'padding:4px 12px;font-size:.7rem;direction:rtl;cursor:pointer;display:flex;align-items:center;gap:6px;'
-    +'box-shadow:0 2px 8px rgba(0,0,0,.2);';
-    bar.onclick=function(){Calendar.render();};
+    if(!timed.length){
+      MGNotification.clear();
+      return;
+    }
 
-    var text='📅 היום: ';
-    timed.slice(0,3).forEach(function(ev,i){
-      if(i>0)text+=' | ';
-      text+=ev.time+' '+ev.title;
+    var title='📅 היום — '+timed.length+' אירועים';
+    var dayTitles=events.filter(function(ev){return ev.dayTitle;});
+    if(dayTitles.length)title+=' | '+dayTitles.map(function(ev){return ev.title;}).join(', ');
+
+    var lines=[];
+    timed.forEach(function(ev){
+      var line=ev.time;
+      if(ev.timeEnd)line+='–'+ev.timeEnd;
+      line+=' '+ev.title;
+      if(ev.candidateName)line+=' ('+ev.candidateName+')';
+      if(ev.room)line+=' 📍'+ev.room;
+      lines.push(line);
     });
-    if(timed.length>3)text+=' +עוד '+(timed.length-3);
-    bar.innerHTML='<div style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">'+text+'</div>'
-    +'<button onclick="event.stopPropagation();document.getElementById(\'calNotifBar\').remove();" '
-    +'style="background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;padding:0 4px;">×</button>';
 
-    document.body.appendChild(bar);
-
-    // Adjust header position
-    var header=document.querySelector('.header');
-    if(header)header.style.top='24px';
+    MGNotification.show(title,lines.join('\n'));
+    _dbg('Lock screen notification: '+timed.length+' events');
   },
 
   // Start periodic notification updates

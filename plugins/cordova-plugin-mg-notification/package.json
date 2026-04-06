@@ -1,0 +1,10 @@
+{
+  "name": "cordova-plugin-mg-notification",
+  "version": "1.0.0",
+  "description": "Persistent lock screen notification for Mini Genius",
+  "cordova": {
+    "id": "cordova-plugin-mg-notification",
+    "platforms": ["android"]
+  },
+  "keywords": ["cordova", "notification", "android"]
+}
