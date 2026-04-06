@@ -30,8 +30,15 @@ var Calendar={
     Calendar._weekStart.setDate(now.getDate()-now.getDay());
     Calendar._weekStart.setHours(0,0,0,0);
     setInterval(function(){Calendar._checkReminders();},60000);
-    // v3.4: Persistent lock screen notification
-    Calendar._startNotificationUpdates();
+    // v3.4: Request notification permission + start updates
+    if(window.MGNotification&&MGNotification.requestPermission){
+      MGNotification.requestPermission(
+        function(){_dbg('Notification permission granted');Calendar._startNotificationUpdates();},
+        function(){_dbg('Notification permission denied');}
+      );
+    }else{
+      Calendar._startNotificationUpdates();
+    }
   },
 
   // ===== WEEKLY VIEW — Vertical day cards =====

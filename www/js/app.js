@@ -79,7 +79,7 @@ const App={
     +'<div style="color:#fff;font-size:1.2rem;font-weight:700;margin-bottom:8px;">Mini Genius</div>'
     +'<div style="color:#aaa;font-size:.85rem;margin-bottom:24px;">הזן קוד PIN</div>'
     +'<div id="pinDots" style="display:flex;gap:12px;margin-bottom:24px;"></div>'
-    +'<div id="pinPad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:260px;width:100;"></div>'
+    +'<div id="pinPad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:260px;width:100%;direction:ltr;"></div>'
     +'<div id="pinError" style="color:#E74C3C;font-size:.85rem;margin-top:16px;min-height:20px;"></div>';
     document.body.appendChild(overlay);
 

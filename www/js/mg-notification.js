@@ -9,5 +9,10 @@ var MGNotification = {
         if(window.cordova && cordova.exec){
             cordova.exec(success||function(){}, error||function(){}, 'MGNotification', 'clear', []);
         }
+    },
+    requestPermission: function(success, error) {
+        if(window.cordova && cordova.exec){
+            cordova.exec(success||function(){}, error||function(){}, 'MGNotification', 'requestPermission', []);
+        }
     }
 };
