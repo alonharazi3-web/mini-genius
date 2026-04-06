@@ -25,9 +25,32 @@ jobs:
           mkdir -p ~/.android
           cp debug.keystore ~/.android/debug.keystore
       - run: cordova platform add android || true
-      - name: Install custom notification plugin
+      - name: Install custom notification plugin manually
         run: |
-          cordova plugin add ./plugins/cordova-plugin-mg-notification --nofetch --force
+          # Copy Java source directly into the Android project
+          mkdir -p platforms/android/app/src/main/java/com/recruit/minigenius
+          cp plugins/cordova-plugin-mg-notification/src/android/MGNotification.java \
+             platforms/android/app/src/main/java/com/recruit/minigenius/
+
+          # Add feature to Android config
+          if ! grep -q "MGNotification" platforms/android/app/src/main/res/xml/config.xml; then
+            sed -i '/<\/widget>/i \    <feature name="MGNotification"><param name="android-package" value="com.recruit.minigenius.MGNotification"/></feature>' \
+              platforms/android/app/src/main/res/xml/config.xml
+          fi
+
+          # Add permission to AndroidManifest
+          if ! grep -q "POST_NOTIFICATIONS" platforms/android/app/src/main/AndroidManifest.xml; then
+            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' \
+              platforms/android/app/src/main/AndroidManifest.xml
+          fi
+
+          # Ensure androidx.core dependency for NotificationCompat
+          if ! grep -q "androidx.core:core" platforms/android/app/build.gradle; then
+            sed -i '/dependencies {/a \    implementation "androidx.core:core:1.12.0"' \
+              platforms/android/app/build.gradle
+          fi
+
+          echo "✅ Plugin installed manually"
       - run: cordova build android --debug
       - name: Find and copy APK
         run: |
