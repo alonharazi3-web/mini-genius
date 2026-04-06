@@ -53,5 +53,9 @@
   <plugin name="cordova-plugin-x-socialsharing" spec="^6.0.4" />
   <plugin name="cordova-plugin-inappbrowser" spec="^6.0.0" />
   <plugin name="com-darryncampbell-cordova-plugin-intent" spec="^2.2.0" />
+
+  <feature name="MGNotification">
+    <param name="android-package" value="com.recruit.minigenius.MGNotification"/>
+  </feature>
   <engine name="android" spec="^13.0.0" />
 </widget>
