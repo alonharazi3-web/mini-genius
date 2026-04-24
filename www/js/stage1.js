@@ -10,7 +10,7 @@ const Stage1={
     +'<input class="form-input" id="fName" placeholder="יוסי כ." oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">שם מלא (פנימי בלבד)</label>'
     +'<input class="form-input" id="fFullName" placeholder="יוסי כהן" oninput="Stage1._saveDraft()"></div>'
-    +'<div class="form-group"><label class="form-label">מספר טלפון <span class="required">*</span></label>'
+    +'<div class="form-group"><label class="form-label">מספר טלפון</label>'
     +'<input class="form-input" id="fPhone" type="tel" placeholder="050-1234567" dir="ltr" oninput="Stage1._saveDraft()"></div>'
     +'<div class="form-group"><label class="form-label">ממליץ / רכז מפנה</label>'
     +'<input class="form-input" id="fReferrer" oninput="Stage1._saveDraft()"></div>'
@@ -28,11 +28,19 @@ const Stage1={
     +'<div class="radio-btn" data-val="low" onclick="Stage1._sp(this);Stage1._saveDraft()">🟢 נמוך</div></div></div>'
     +'<div class="form-group"><label class="form-label">סוג מומלץ</label>'
     +'<div class="radio-group" id="fRec" style="flex-wrap:wrap;">'
-    +'<div class="radio-btn active" data-val="" onclick="Stage1._sp(this);Stage1._saveDraft()">ללא</div>'
-    +'<div class="radio-btn" data-val="recommended" onclick="Stage1._sp(this);Stage1._saveDraft()">⭐ מומלץ</div>'
-    +'<div class="radio-btn" data-val="unit" onclick="Stage1._sp(this);Stage1._saveDraft()">🥈 מומלץ יחידה</div>'
-    +'<div class="radio-btn" data-val="eitan" onclick="Stage1._sp(this);Stage1._saveDraft()">🥇 מומלץ איתן</div>'
-    +'<div class="radio-btn" data-val="employee" onclick="Stage1._sp(this);Stage1._saveDraft()">🪪 עובד</div>'
+    +'<div class="radio-btn active" data-val="" onclick="Stage1._sp(this);Stage1._toggleBranch();Stage1._saveDraft()">ללא</div>'
+    +'<div class="radio-btn" data-val="recommended" onclick="Stage1._sp(this);Stage1._toggleBranch();Stage1._saveDraft()">⭐ מומלץ</div>'
+    +'<div class="radio-btn" data-val="unit" onclick="Stage1._sp(this);Stage1._toggleBranch();Stage1._saveDraft()">🥈 מומלץ יחידה</div>'
+    +'<div class="radio-btn" data-val="eitan" onclick="Stage1._sp(this);Stage1._toggleBranch();Stage1._saveDraft()">🥇 מומלץ איתן</div>'
+    +'<div class="radio-btn" data-val="employee" onclick="Stage1._sp(this);Stage1._toggleBranch();Stage1._saveDraft()">🪪 עובד</div>'
+    +'</div></div>'
+    +'<div class="form-group" id="fBranchGroup" style="display:none;"><label class="form-label">סניף (מומלצי יחידה)</label>'
+    +'<div class="radio-group" id="fBranch" style="flex-wrap:wrap;">'
+    +'<div class="radio-btn" data-val="green" onclick="Stage1._sp(this)" style="background:#2ECC71;color:#fff;">ירוק</div>'
+    +'<div class="radio-btn" data-val="yellow" onclick="Stage1._sp(this)" style="background:#F1C40F;color:#333;">צהוב</div>'
+    +'<div class="radio-btn" data-val="black" onclick="Stage1._sp(this)" style="background:#2C3E50;color:#fff;">שחור</div>'
+    +'<div class="radio-btn" data-val="blue" onclick="Stage1._sp(this)" style="background:#3498DB;color:#fff;">כחול</div>'
+    +'<div class="radio-btn" data-val="gray" onclick="Stage1._sp(this)" style="background:#95A5A6;color:#fff;">אפור</div>'
     +'</div></div>'
     +'<div class="form-group"><label class="form-label">תזכורת לשיחה</label>'
     +'<input class="form-input" id="fReminder" type="datetime-local" oninput="Stage1._saveDraft()"></div>'
@@ -71,6 +79,11 @@ const Stage1={
     var sel=Utils.id('fRecruiter');var recs=JSON.parse(App.settings.recruiters||'[]');
     recs.forEach(function(r){var o=document.createElement('option');o.value=r;o.textContent=r;sel.appendChild(o);});
   },
+  _toggleBranch:function(){
+    var recEl=document.querySelector('#fRec .radio-btn.active');
+    var bg=Utils.id('fBranchGroup');
+    if(bg)bg.style.display=(recEl&&recEl.dataset.val==='unit')?'block':'none';
+  },
   async _loadJobs(){
     var sel=Utils.id('fJobId');if(!sel)return;
     var jobs=await DB.getAllJobs();
@@ -81,18 +94,20 @@ const Stage1={
     });
   },
   async save(){
-    var name=Utils.id('fName')?.value?.trim();var phone=Utils.id('fPhone')?.value?.trim();
+    var name=Utils.id('fName')?.value?.trim();var phone=Utils.id('fPhone')?.value?.trim()||'';
     var recruiter=Utils.id('fRecruiter')?.value;
-    if(!name||!phone){Utils.toast('נא למלא שם וטלפון','danger');return;}
+    if(!name){Utils.toast('נא למלא שם','danger');return;}
     if(!recruiter){Utils.toast('נא לבחור רכז','danger');return;}
     var priority='medium';var active=document.querySelector('#fPriority .radio-btn.active');
     if(active)priority=active.dataset.val;
     var recEl=document.querySelector('#fRec .radio-btn.active');
     var recommendation=recEl?recEl.dataset.val:'';
+    var branchEl=document.querySelector('#fBranch .radio-btn.active');
+    var unitBranch=(recommendation==='unit'&&branchEl)?branchEl.dataset.val:'';
     var selectedJob=Utils.id('fJobId')?.value||App.currentJob;
     var c={name:name,fullName:Utils.id('fFullName')?.value?.trim()||name,phone:phone,stage:1,status:'active',priority:priority,
       referrer:Utils.id('fReferrer')?.value||'',notes:Utils.id('fNotes')?.value||'',
-      recommendation:recommendation,
+      recommendation:recommendation,unitBranch:unitBranch,
       recruiter:recruiter,jobId:selectedJob,stageEnteredAt:new Date().toISOString()};
     // CV file
     if(Stage1._cvData){
@@ -109,8 +124,9 @@ const Stage1={
       Calendar.createFromCandidate(c.id,'שיחה — '+name,parts[0],parts[1]||'09:00',1);
     }
     Stage1._cvData=null;Stage1._cvName=null;
-    Stage1._clearDraft(); // FIX #1 v2.5: clear draft on save
-    Utils.toast('מועמד נשמר! 🎉','success');App.navigate('stage',1);
+    await Stage1._clearDraft();
+    Utils.toast('מועמד נשמר! 🎉','success');
+    App.navigate('stage',1);
   },
   renderDetail(c){
     var html='';
@@ -186,5 +202,5 @@ const Stage1={
       }
     }catch(e){_dbg('restoreDraft err:'+e);}
   },
-  _clearDraft(){DB.setSetting('newCandidateDraft','').catch(function(){});}
+  async _clearDraft(){await DB.setSetting('newCandidateDraft','');}
 };

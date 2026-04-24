@@ -42,6 +42,13 @@ jobs:
           # Verify feature is in platform config.xml (copied from root by cordova prepare)
           grep "MGNotification" platforms/android/app/src/main/res/xml/config.xml && echo "✅ Feature registered" || echo "❌ Feature missing!"
 
+          # Add intent-filter for receiving shared text from WhatsApp
+          MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
+          if ! grep -q "android.intent.action.SEND" "$MANIFEST"; then
+            sed -i '/<\/activity>/i \        <intent-filter>\n            <action android:name="android.intent.action.SEND" \/>\n            <category android:name="android.intent.category.DEFAULT" \/>\n            <data android:mimeType="text\/plain" \/>\n        <\/intent-filter>\n        <intent-filter>\n            <action android:name="android.intent.action.SEND" \/>\n            <category android:name="android.intent.category.DEFAULT" \/>\n            <data android:mimeType="text\/*" \/>\n        <\/intent-filter>' "$MANIFEST"
+            echo "✅ Intent filter added"
+          fi
+
           echo "✅ Plugin installed"
       - run: cordova compile android --debug
       - name: Find and copy APK

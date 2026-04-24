@@ -70,6 +70,128 @@ const App={
     },false);
     window.addEventListener('beforeunload',function(){App.flushDirty();});
     _dbg('App.init done');
+    // v3.4: Handle shared text from WhatsApp
+    App._setupIntentHandler();
+  },
+
+  // ===== SHARED TEXT HANDLER =====
+  _setupIntentHandler:function(){
+    if(!window.plugins||!window.plugins.intentShim)return;
+    window.plugins.intentShim.getIntent(function(intent){
+      App._processIntent(intent);
+    },function(){});
+    window.plugins.intentShim.onIntent(function(intent){
+      App._processIntent(intent);
+    });
+  },
+
+  _processIntent:function(intent){
+    if(!intent||!intent.action)return;
+    if(intent.action==='android.intent.action.SEND'){
+      var text=intent.extras&&intent.extras['android.intent.extra.TEXT']||'';
+      if(!text&&intent.extras)text=intent.extras['android.intent.extra.SUBJECT']||'';
+      if(text){
+        _dbg('Shared text: '+text.substring(0,50));
+        var parsed=App._parseSharedText(text);
+        App._showSharedCandidateForm(parsed,text);
+      }
+    }
+  },
+
+  _parseSharedText:function(text){
+    var result={name:'',fullName:'',phone:'',notes:'',referrer:''};
+    var clean=text;
+
+    // Extract phone (Israeli formats)
+    var phoneMatch=clean.match(/(?:0[2-9][0-9][-\s]?[0-9]{7}|05[0-9][-\s]?[0-9]{3}[-\s]?[0-9]{4}|\+972[-\s]?[0-9]{1,2}[-\s]?[0-9]{7})/);
+    if(phoneMatch){
+      result.phone=phoneMatch[0].replace(/[-\s]/g,'');
+      clean=clean.replace(phoneMatch[0],'').trim();
+    }
+
+    // Extract ID number (9 digits)
+    var idMatch=clean.match(/\b[0-9]{9}\b/);
+    if(idMatch){
+      result.notes='ת.ז: '+idMatch[0];
+      clean=clean.replace(idMatch[0],'').trim();
+    }
+
+    // Extract Hebrew name (2-4 words)
+    var hebrewWords=clean.match(/[\u0590-\u05FF]+(?:\s+[\u0590-\u05FF]+){0,3}/);
+    if(hebrewWords){
+      var nameParts=hebrewWords[0].trim().split(/\s+/);
+      if(nameParts.length>=2){
+        result.fullName=nameParts.join(' ');
+        result.name=nameParts[0]+' '+nameParts[1].charAt(0)+'.';
+      }else if(nameParts.length===1){
+        result.fullName=nameParts[0];
+        result.name=nameParts[0];
+      }
+    }
+
+    // Referrer pattern
+    var refMatch=text.match(/(?:מומלץ|ממליץ|הפנ[הי])\s*(?:של|ע"י|מ)?\s*([\u0590-\u05FF]+(?:\s+[\u0590-\u05FF]+)?)/i);
+    if(refMatch)result.referrer=refMatch[1].trim();
+
+    // Remaining text → notes
+    var remaining=clean.replace(hebrewWords?hebrewWords[0]:'','').replace(/[-:,]/g,' ').replace(/\s+/g,' ').trim();
+    if(remaining)result.notes=(result.notes?result.notes+' | ':'')+remaining;
+
+    return result;
+  },
+
+  async _showSharedCandidateForm(parsed,originalText){
+    var dupWarning='';
+    if(parsed.phone){
+      var dups=await DB.findDups(parsed.phone);
+      if(dups.length)dupWarning='<div class="warn-box" style="margin-bottom:12px;">⚠️ מועמד עם טלפון '+parsed.phone+' כבר קיים: '+Utils.escHtml(Utils.displayName(dups[0]))+'</div>';
+    }
+    if(parsed.fullName){
+      var all=await DB.getAllCandidates();
+      var nameMatch=all.find(function(c){return(c.fullName||c.name||'').includes(parsed.fullName);});
+      if(nameMatch)dupWarning+='<div class="warn-box" style="margin-bottom:12px;">⚠️ שם דומה קיים: '+Utils.escHtml(Utils.displayName(nameMatch))+'</div>';
+    }
+
+    var html='<div class="modal-title">📥 הזנה מוואצאפ</div>'
+    +'<div class="info-box" style="margin-bottom:12px;font-size:.75rem;max-height:60px;overflow-y:auto;">'+Utils.escHtml(originalText)+'</div>'
+    +dupWarning
+    +'<div class="form-group"><label class="form-label">שם מקוצר</label>'
+    +'<input class="form-input" id="shName" value="'+Utils.escHtml(parsed.name)+'"></div>'
+    +'<div class="form-group"><label class="form-label">שם מלא</label>'
+    +'<input class="form-input" id="shFullName" value="'+Utils.escHtml(parsed.fullName)+'"></div>'
+    +'<div class="form-group"><label class="form-label">טלפון</label>'
+    +'<input class="form-input" id="shPhone" value="'+Utils.escHtml(parsed.phone)+'"></div>'
+    +'<div class="form-group"><label class="form-label">ממליץ</label>'
+    +'<input class="form-input" id="shReferrer" value="'+Utils.escHtml(parsed.referrer)+'"></div>'
+    +'<div class="form-group"><label class="form-label">הערות</label>'
+    +'<textarea class="form-textarea" id="shNotes" rows="2">'+Utils.escHtml(parsed.notes)+'</textarea></div>'
+    +'<div class="form-group"><label class="form-label">רכז מטפל</label>'
+    +'<select class="form-select" id="shRecruiter"><option value="">בחר...</option></select></div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="App._saveSharedCandidate()">💾 שמור מועמד</button>'
+    +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
+    Stages.showModal(html);
+    var recs=JSON.parse(App.settings.recruiters||'[]');
+    var sel=Utils.id('shRecruiter');
+    recs.forEach(function(r){var o=document.createElement('option');o.value=r;o.textContent=r;sel.appendChild(o);});
+  },
+
+  async _saveSharedCandidate(){
+    var name=Utils.id('shName')?.value?.trim();
+    if(!name){Utils.toast('נא למלא שם','danger');return;}
+    var recruiter=Utils.id('shRecruiter')?.value;
+    if(!recruiter){Utils.toast('נא לבחור רכז','danger');return;}
+    var c={name:name,fullName:Utils.id('shFullName')?.value?.trim()||name,
+      phone:Utils.id('shPhone')?.value?.trim()||'',
+      referrer:Utils.id('shReferrer')?.value?.trim()||'',
+      notes:Utils.id('shNotes')?.value?.trim()||'',
+      stage:1,status:'active',priority:'medium',recommendation:'',
+      recruiter:recruiter,jobId:App.currentJob,stageEnteredAt:new Date().toISOString()};
+    c=await DB.saveCandidate(c);
+    DB.logAction('מועמד חדש (וואצאפ)',c.name);
+    Stages.closeModal();
+    Utils.toast('✅ '+c.name+' נשמר','success');
+    App.navigate('stage',1);
   },
 
   // v3.4 #6: PIN Lock
@@ -311,7 +433,25 @@ const App={
   // Helper to render a candidate card (reused in stage list)
   _renderCandidateCard:function(c,stageId){
     var ad=parseInt(App.settings['alertDaysStage'+stageId])||5;
-    var days=Utils.workDaysSince(c.stageEnteredAt||c.updatedAt);var delayed=days>=ad;
+    // v3.4 #4: Smart delay calculation
+    // - If there's a future meeting for this stage → not delayed
+    // - If meeting passed → count from meeting date
+    // - Otherwise count from last update (any data change resets timer)
+    var meetingDate=stageId===3?c.stage3_examDate:c['stage'+stageId+'_date'];
+    var delayed=false;var days=0;
+    if(meetingDate){
+      var mDate=new Date(meetingDate+'T23:59:59');
+      if(mDate>new Date()){
+        // Future meeting — not delayed
+        delayed=false;days=0;
+      }else{
+        // Meeting passed — count from meeting date
+        days=Utils.workDaysSince(meetingDate);delayed=days>=ad;
+      }
+    }else{
+      // No meeting — count from last update
+      days=Utils.workDaysSince(c.updatedAt||c.stageEnteredAt);delayed=days>=ad;
+    }
     var gradeSummary='';
     for(var si=1;si<stageId;si++){
       var g=c['stage'+si+'_grade'];
@@ -319,9 +459,11 @@ const App={
     }
     var notesTrim=(c.notes||'').substring(0,40);
     var dName=Utils.displayName(c);
+    var branchBadge=c.unitBranch?'<span style="background:'+Utils.unitBranchColor(c.unitBranch)+';color:#fff;font-size:.6rem;padding:1px 5px;border-radius:6px;margin-right:4px;">'+Utils.unitBranchLabel(c.unitBranch)+'</span>':'';
     var html='<div class="card priority-'+c.priority+'" data-name="'+Utils.escHtml(dName)+'" data-phone="'+Utils.escHtml(c.phone)+'">'
     +'<div class="card-header" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-    +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(dName)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')+'</span>'
+    +'<span class="card-name">'+(Utils.PRI_DOTS[c.priority]||'')+' '+Utils.escHtml(dName)+(c.recommendation?(' '+Utils.REC_ICONS[c.recommendation]):'')
+    +branchBadge+'</span>'
     +'<span class="status-badge status-'+c.status+'">'+Utils.STATUSES[c.status]+'</span></div>'
     +'<div onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
     +'<div class="card-meta">'+Utils.escHtml(c.phone)+' | '+days+' ימי עבודה'
@@ -458,6 +600,15 @@ const App={
     +'<div class="radio-btn '+(rec==='eitan'?'active':'')+'" data-val="eitan" onclick="App._editRec(this)">🥇 מומלצי איתן</div>'
     +'<div class="radio-btn '+(rec==='employee'?'active':'')+'" data-val="employee" onclick="App._editRec(this)">🪪 עובדים</div>'
     +'</div></div>';
+    // v3.4: Unit branch sub-category
+    var branch=c.unitBranch||'';
+    html+='<div class="form-group" id="editBranchGroup" style="'+(rec==='unit'?'':'display:none;')+'"><label class="form-label">סניף</label>'
+    +'<div class="radio-group" id="editBranch" style="flex-wrap:wrap;">';
+    Utils.UNIT_BRANCHES.forEach(function(b){
+      html+='<div class="radio-btn '+(branch===b.id?'active':'')+'" data-val="'+b.id+'" onclick="App._editRec(this)" '
+      +'style="background:'+b.color+';color:'+(b.id==='yellow'?'#333':'#fff')+';">'+b.label+'</div>';
+    });
+    html+='</div></div>';
     html+='<div style="display:flex;gap:8px;margin-top:16px;">'
     +'<button class="btn btn-primary" style="flex:1;" onclick="App.saveEdit(\''+c.id+'\')">💾 שמור</button>'
     +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>'
@@ -466,7 +617,16 @@ const App={
     Stages.showModal(html);
   },
   _editPri(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
-  _editRec(el){el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});el.classList.add('active');},
+  _editRec(el){
+    el.parentElement.querySelectorAll('.radio-btn').forEach(function(b){b.classList.remove('active')});
+    el.classList.add('active');
+    // Toggle branch visibility
+    var bg=Utils.id('editBranchGroup');
+    if(bg&&el.parentElement.id==='editRec'){
+      var val=el.dataset.val;
+      bg.style.display=(val==='unit')?'block':'none';
+    }
+  },
   async saveEdit(id){
     var c=await DB.getCandidate(id);if(!c)return;
     c.name=Utils.id('editName')?.value?.trim()||c.name;
@@ -477,9 +637,11 @@ const App={
     c.recruiter=Utils.id('editRecruiter')?.value||c.recruiter;
     var priEl=document.querySelector('#editPriority .radio-btn.active');
     if(priEl)c.priority=priEl.dataset.val;
-    // v3.0: Save recommendation
     var recEl=document.querySelector('#editRec .radio-btn.active');
     if(recEl)c.recommendation=recEl.dataset.val||'';
+    // v3.4: Save unit branch
+    var branchEl=document.querySelector('#editBranch .radio-btn.active');
+    c.unitBranch=(c.recommendation==='unit'&&branchEl)?branchEl.dataset.val:'';
     if(c.recommendation&&!c.recommendedAt)c.recommendedAt=new Date().toISOString();
     var newStage=parseInt(Utils.id('editStage')?.value);
     // v3.4: Save job cycle
@@ -546,8 +708,9 @@ const App={
           var handled=c.recommendedAt?Utils.formatDate(c.recommendedAt):(c.createdAt?Utils.formatDate(c.createdAt):'-');
           var notesAll='';
           for(var si=1;si<=7;si++){var n=c['stage'+si+'_notes'];if(n)notesAll+=(notesAll?', ':'')+Utils.getStage(si).icon+n.substring(0,30);}
+          var branchTag=c.unitBranch?'<span style="background:'+Utils.unitBranchColor(c.unitBranch)+';color:#fff;font-size:.6rem;padding:1px 5px;border-radius:8px;margin-right:4px;">'+Utils.unitBranchLabel(c.unitBranch)+'</span>':'';
           html+='<div class="card" onclick="App.navigate(\'candidate\',\''+c.id+'\')">'
-          +'<div class="card-header"><span class="card-name">'+g.icon+' '+Utils.escHtml(Utils.displayName(c))+'</span>'
+          +'<div class="card-header"><span class="card-name">'+g.icon+' '+Utils.escHtml(Utils.displayName(c))+branchTag+'</span>'
           +'<span class="status-badge status-'+c.status+'">'+status+'</span></div>'
           +'<div class="card-meta">'+stageName+' | ממליץ: '+(c.referrer||'-')+' | רכז: '+(c.recruiter||'-')+'</div>'
           +(notesAll?'<div class="card-meta">📝 '+Utils.escHtml(notesAll)+'</div>':'')
@@ -573,7 +736,8 @@ const App={
       for(var si=1;si<=7;si++){var n=c['stage'+si+'_notes'];if(n)notesAll+=(notesAll?' | ':'')+n.substring(0,40);}
       if(c.notes)notesAll=(c.notes.substring(0,40))+(notesAll?' | '+notesAll:'');
       return{id:c.id,name:Utils.exportName(c),stage:c.stage,status:c.status,
-        recommendation:c.recommendation,referrer:c.referrer||'-',recruiter:c.recruiter||'-',
+        recommendation:c.recommendation,unitBranch:c.unitBranch||'',
+        referrer:c.referrer||'-',recruiter:c.recruiter||'-',
         notes:notesAll||'-',changes:[]};
     });
 
@@ -603,10 +767,14 @@ const App={
     +'var statusNames='+JSON.stringify(statusNames)+';'
     +'var recIcons={eitan:"🥇",unit:"🥈",recommended:"⭐",employee:"🪪"};'
     +'var recLabels={eitan:"מומלצי איתן",unit:"מומלצי יחידה",recommended:"מומלצים",employee:"עובדים"};'
+    +'var branchColors={green:"#2ECC71",yellow:"#F1C40F",black:"#2C3E50",blue:"#3498DB",gray:"#95A5A6"};'
+    +'var branchLabels={green:"ירוק",yellow:"צהוב",black:"שחור",blue:"כחול",gray:"אפור"};'
     +'var candidates='+JSON.stringify(candData)+';'
     +'function render(){'
     +'var groups={eitan:[],unit:[],recommended:[],employee:[]};'
     +'candidates.forEach(function(c){if(groups[c.recommendation])groups[c.recommendation].push(c);});'
+    // Sort unit by branch
+    +'groups.unit.sort(function(a,b){var order="green,yellow,black,blue,gray";return(order.indexOf(a.unitBranch||"z"))-(order.indexOf(b.unitBranch||"z"));});'
     +'var html="";'
     +'[{key:"eitan",icon:"🥇"},{key:"unit",icon:"🥈"},{key:"recommended",icon:"⭐"},{key:"employee",icon:"🪪"}].forEach(function(g){'
     +'if(!groups[g.key].length)return;'
@@ -614,7 +782,8 @@ const App={
     +'groups[g.key].forEach(function(c,i){'
     +'var idx=candidates.indexOf(c);'
     +'var badgeCls="badge-"+(c.status==="stopped"?"stopped":c.status==="fail"?"fail":c.status==="pass"?"pass":"active");'
-    +'html+="<div class=\\"card\\"><div class=\\"name\\">"+g.icon+" "+esc(c.name)+"</div>";'
+    +'var branchBadge=c.unitBranch?(" <span style=\\"display:inline-block;background:"+(branchColors[c.unitBranch]||"#ccc")+";color:"+(c.unitBranch==="yellow"?"#333":"#fff")+";font-size:.7rem;padding:2px 8px;border-radius:8px;\\">"+(branchLabels[c.unitBranch]||"")+"</span>"):"";'
+    +'html+="<div class=\\"card\\"><div class=\\"name\\">"+g.icon+" "+esc(c.name)+branchBadge+"</div>";'
     +'html+="<div class=\\"meta\\"><span class=\\"badge "+badgeCls+"\\">"+(statusNames[c.status]||c.status)+"</span> | תחנה: "+(stageNames[c.stage]||c.stage)+"</div>";'
     +'html+="<div class=\\"meta\\">ממליץ: "+esc(c.referrer)+" | רכז: "+esc(c.recruiter)+"</div>";'
     +'if(c.notes&&c.notes!=="-")html+="<div class=\\"meta\\">📝 "+esc(c.notes)+"</div>";'

@@ -13,6 +13,15 @@ STATUSES:{active:'פעיל',pass:'עבר',fail:'לא עבר',hesitation:'התל�
 STATUS_COLORS:{active:'#4A90D9',pass:'#2ECC71',fail:'#E74C3C',hesitation:'#F1C40F',stopped:'#95a5a6',accepted:'#2ecc71',frozen:'#9B59B6'},
 REC_ICONS:{recommended:'⭐',unit:'🥈',eitan:'🥇',employee:'🪪'},
 REC_LABELS:{recommended:'מומלצים',unit:'מומלצי יחידה',eitan:'מומלצי איתן',employee:'עובדים'},
+UNIT_BRANCHES:[
+  {id:'green',label:'ירוק',color:'#2ECC71'},
+  {id:'yellow',label:'צהוב',color:'#F1C40F'},
+  {id:'black',label:'שחור',color:'#2C3E50'},
+  {id:'blue',label:'כחול',color:'#3498DB'},
+  {id:'gray',label:'אפור',color:'#95A5A6'}
+],
+unitBranchLabel:function(id){var b=Utils.UNIT_BRANCHES.find(function(x){return x.id===id;});return b?b.label:'';},
+unitBranchColor:function(id){var b=Utils.UNIT_BRANCHES.find(function(x){return x.id===id;});return b?b.color:'#C0C0C0';},
 PRI_DOTS:{high:'<span style="color:#E74C3C;">●</span>',medium:'<span style="color:#F39C12;">●</span>',low:'<span style="color:#2ECC71;">●</span>'},
 // v3.4: Display name (fullName for internal, name for export)
 displayName:function(c){return c.fullName||c.name||'';},

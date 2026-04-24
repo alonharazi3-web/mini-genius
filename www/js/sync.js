@@ -140,16 +140,25 @@ var Sync={
   isSignedIn(){return Sync._token&&Sync._tokenExpiry>Date.now();},
 
   // ===== DRIVE API HELPERS =====
+  _isUserAction:false,
+
   async _apiCall(url,opts){
     if(!Sync._token)throw new Error('Not signed in');
     opts=opts||{};opts.headers=opts.headers||{};
     opts.headers['Authorization']='Bearer '+Sync._token;
     var resp=await fetch(url,opts);
     if(resp.status===401){
-      Sync._token=null;
-      // Auto-prompt reconnect instead of just failing
-      Sync._showTokenPasteDialog();
-      throw new Error('Token expired — reconnecting');
+      // Token expired — try to silently refresh
+      _dbg('Sync: 401 — token expired');
+      if(Sync._isUserAction){
+        // User-initiated action — show paste dialog
+        Sync._showTokenPasteDialog();
+        throw new Error('Token expired — reconnecting');
+      }else{
+        // Background action — don't bother user, just log
+        _dbg('Sync: background 401, skipping silently');
+        throw new Error('Token expired (background)');
+      }
     }
     return resp;
   },
@@ -250,6 +259,7 @@ var Sync={
 
   // ===== FULL UPLOAD — sends ALL local data to cloud =====
   async fullUpload(){
+    Sync._isUserAction=true;
     try{
       Utils.toast('מעלה נתונים...','info');
       await Sync._saveLocalBackup();
@@ -260,11 +270,12 @@ var Sync={
     }catch(e){
       _dbg('fullUpload err: '+e);
       Utils.toast('שגיאת העלאה: '+e.message,'danger');
-    }
+    }finally{Sync._isUserAction=false;}
   },
 
   // ===== FULL DOWNLOAD — replaces local with cloud =====
   async fullDownload(){
+    Sync._isUserAction=true;
     try{
       Utils.toast('מוריד נתונים...','info');
       await Sync._saveLocalBackup();
@@ -300,11 +311,12 @@ var Sync={
     }catch(e){
       _dbg('fullDownload err: '+e);
       Utils.toast('שגיאת הורדה: '+e.message,'danger');
-    }
+    }finally{Sync._isUserAction=false;}
   },
 
   // ===== SMART MERGE — compare by ID, auto-merge when possible =====
   async mergeAndSync(){
+    Sync._isUserAction=true;
     try{
       Utils.toast('מסנכרן...','info');
       await Sync._saveLocalBackup();
@@ -375,7 +387,7 @@ var Sync={
     }catch(e){
       _dbg('Sync err: '+e);
       Utils.toast('שגיאת סנכרון: '+e.message,'danger');
-    }
+    }finally{Sync._isUserAction=false;}
   },
 
   _conflicts:[],_merged:[],_mergeStats:{},_remoteTasks:[],_remoteEvents:[],_remoteJobs:[],_conflictIdx:0,
@@ -498,6 +510,7 @@ var Sync={
   },
 
   async _checkRemoteChanges(){
+    Sync._isUserAction=true;
     try{
       var resp=await Sync._apiCall('https://www.googleapis.com/drive/v3/files/'+Sync._syncFileId+'?fields=modifiedTime');
       var data=await resp.json();
@@ -512,7 +525,7 @@ var Sync={
       }else{
         Utils.toast('✅ אין שינויים חדשים בענן','success');
       }
-    }catch(e){_dbg('Check remote err: '+e);}
+    }catch(e){_dbg('Check remote err: '+e);}finally{Sync._isUserAction=false;}
   },
 
   // ===== EXIT — upload + optional report + close =====
