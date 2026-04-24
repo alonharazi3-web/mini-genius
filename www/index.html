@@ -48,6 +48,8 @@ direction:ltr;text-align:left;display:none;">
 <div class="fab-menu" id="fabMenu">
 <button class="fab-item" onclick="Stage1.renderForm();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
 <span class="fab-icon">👤</span> 📌 מועמד חדש</button>
+<button class="fab-item" onclick="App.pasteFromClipboard();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
+<span class="fab-icon">📋</span> 📋 הדבק מוואצאפ</button>
 <button class="fab-item" onclick="Dashboard.render();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">
 <span class="fab-icon">📊</span> 📊 דשבורד</button>
 <button class="fab-item" onclick="Tasks.render();document.getElementById('fab').classList.remove('open');document.getElementById('fabMenu').classList.remove('show');">

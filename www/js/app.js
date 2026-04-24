@@ -70,32 +70,36 @@ const App={
     },false);
     window.addEventListener('beforeunload',function(){App.flushDirty();});
     _dbg('App.init done');
-    // v3.4: Handle shared text from WhatsApp
-    App._setupIntentHandler();
   },
 
-  // ===== SHARED TEXT HANDLER =====
-  _setupIntentHandler:function(){
-    if(!window.plugins||!window.plugins.intentShim)return;
-    window.plugins.intentShim.getIntent(function(intent){
-      App._processIntent(intent);
-    },function(){});
-    window.plugins.intentShim.onIntent(function(intent){
-      App._processIntent(intent);
-    });
-  },
-
-  _processIntent:function(intent){
-    if(!intent||!intent.action)return;
-    if(intent.action==='android.intent.action.SEND'){
-      var text=intent.extras&&intent.extras['android.intent.extra.TEXT']||'';
-      if(!text&&intent.extras)text=intent.extras['android.intent.extra.SUBJECT']||'';
-      if(text){
-        _dbg('Shared text: '+text.substring(0,50));
-        var parsed=App._parseSharedText(text);
-        App._showSharedCandidateForm(parsed,text);
-      }
+  // ===== PASTE FROM WHATSAPP (clipboard) =====
+  async pasteFromClipboard(){
+    var text='';
+    try{
+      text=await navigator.clipboard.readText();
+    }catch(e){
+      // Clipboard API may fail — show manual input
+      _dbg('Clipboard err: '+e);
     }
+    if(!text){
+      // Show manual paste dialog
+      var html='<div class="modal-title">📋 הדבק טקסט מוואצאפ</div>'
+      +'<div class="form-group"><label class="form-label">העתק הודעה מוואצאפ והדבק כאן:</label>'
+      +'<textarea class="form-textarea" id="manualPaste" rows="4" placeholder="הדבק כאן..."></textarea></div>'
+      +'<button class="btn btn-primary" style="width:100%;" onclick="App._processManualPaste()">📥 נתח והזן</button>';
+      Stages.showModal(html);
+      return;
+    }
+    var parsed=App._parseSharedText(text);
+    App._showSharedCandidateForm(parsed,text);
+  },
+
+  _processManualPaste:function(){
+    var text=Utils.id('manualPaste')?.value?.trim();
+    if(!text){Utils.toast('הדבק טקסט','danger');return;}
+    Stages.closeModal();
+    var parsed=App._parseSharedText(text);
+    App._showSharedCandidateForm(parsed,text);
   },
 
   _parseSharedText:function(text){
