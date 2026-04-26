@@ -12,20 +12,13 @@ var Sync={
     Sync._syncFileId=App.settings.gdrive_fileId||'';
     Sync._currentRecruiter=App.settings.currentRecruiter||'';
     if(clientId&&token){
+      Sync._token=token;Sync._tokenExpiry=expiry;
       if(expiry>Date.now()){
-        Sync._token=token;Sync._tokenExpiry=expiry;
         _dbg('Sync: token loaded, expires '+new Date(expiry).toLocaleTimeString());
-        Sync._startTimers();
       }else{
-        // Token expired — keep fileId, prompt reconnect
-        _dbg('Sync: token expired, will prompt reconnect');
-        Sync._token=null;Sync._tokenExpiry=0;
-        setTimeout(function(){
-          if(App.settings.gdrive_clientId){
-            Utils.toast('טוקן Google Drive פג — יש להתחבר מחדש','warning');
-          }
-        },4000);
+        _dbg('Sync: token loaded but expired — auto-refresh will attempt renewal');
       }
+      Sync._startTimers();
     }
   },
 
@@ -50,74 +43,129 @@ var Sync={
     Utils.toast('רכז: '+name,'success');
   },
 
-  // ===== GOOGLE SIGN-IN — opens Chrome (not WebView) =====
+  // ===== GOOGLE SIGN-IN — authorization code flow with refresh token =====
   async signIn(){
     var clientId=App.settings.gdrive_clientId||'';
+    var clientSecret=App.settings.gdrive_clientSecret||'';
     if(!clientId){Utils.toast('הגדר Client ID בהגדרות סנכרון','danger');return;}
-    _dbg('Sync: starting OAuth via system browser...');
+    if(!clientSecret){Utils.toast('הגדר Client Secret בהגדרות סנכרון','danger');return;}
+    _dbg('Sync: starting OAuth code flow...');
 
-    var redirectUri='https://alonharazi3-web.github.io/mini-genius/oauth.html';
+    var redirectUri=App.settings.gdrive_redirectUri||'https://alonharazi3-web.github.io/mini-genius/oauth.html';
     var scope='https://www.googleapis.com/auth/drive.file';
     var url='https://accounts.google.com/o/oauth2/v2/auth'
     +'?client_id='+encodeURIComponent(clientId)
     +'&redirect_uri='+encodeURIComponent(redirectUri)
-    +'&response_type=token'
-    +'&scope='+encodeURIComponent(scope)
-    +'&prompt=consent';
+    +'&response_type=code'
+    +'&access_type=offline'
+    +'&prompt=consent'
+    +'&scope='+encodeURIComponent(scope);
 
-    // Open in SYSTEM browser (Chrome) — Google blocks WebView
     if(window.cordova&&window.cordova.InAppBrowser){
       cordova.InAppBrowser.open(url,'_system');
-    }else{
-      window.open(url,'_blank');
-    }
+    }else{window.open(url,'_blank');}
 
-    // Show paste dialog — user will copy token from Chrome
-    setTimeout(function(){
-      Sync._showTokenPasteDialog();
-    },2000);
+    setTimeout(function(){Sync._showCodePasteDialog();},2000);
   },
 
-  _showTokenPasteDialog:function(){
-    var html='<div class="modal-title">🔑 הדבק טוקן</div>'
-    +'<div class="info-box">1. היכנס עם Google בכרום<br>2. אשר גישה<br>3. העתק את הטוקן שמופיע<br>4. חזור לכאן והדבק</div>'
-    +'<div class="form-group"><label class="form-label">טוקן גישה</label>'
-    +'<input class="form-input" id="pasteToken" dir="ltr" placeholder="הדבק כאן..." style="font-size:.8rem;"></div>'
+  _showCodePasteDialog:function(){
+    var html='<div class="modal-title">🔑 הדבק קוד אימות</div>'
+    +'<div class="info-box">1. היכנס עם Google בכרום<br>2. אשר גישה<br>3. העתק את <strong>קוד האימות</strong> שמופיע<br>4. חזור לכאן והדבק</div>'
+    +'<div class="form-group"><label class="form-label">קוד אימות</label>'
+    +'<input class="form-input" id="pasteCode" dir="ltr" placeholder="4/0Ax..." style="font-size:.8rem;"></div>'
     +'<div style="display:flex;gap:8px;margin-top:12px;">'
-    +'<button class="btn btn-primary" style="flex:1;" onclick="Sync._applyPastedToken()">✅ אישור</button>'
+    +'<button class="btn btn-primary" style="flex:1;" onclick="Sync._exchangeCode()">✅ התחבר</button>'
     +'<button class="btn btn-outline" style="flex:1;" onclick="Stages.closeModal()">ביטול</button></div>';
     Stages.showModal(html);
   },
 
-  async _applyPastedToken(){
-    var token=(Utils.id('pasteToken')?.value||'').trim();
-    if(!token||token.length<20){Utils.toast('טוקן לא תקין','danger');return;}
-    Sync._token=token;
-    Sync._tokenExpiry=Date.now()+(30*24*3600*1000); // 30 days
-    await DB.setSetting('gdrive_token',token);
-    await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
-    App.settings.gdrive_token=token;
-    App.settings.gdrive_tokenExpiry=String(Sync._tokenExpiry);
-    Stages.closeModal();
+  async _exchangeCode(){
+    var code=(Utils.id('pasteCode')?.value||'').trim();
+    if(!code||code.length<10){Utils.toast('קוד לא תקין','danger');return;}
+    var clientId=App.settings.gdrive_clientId||'';
+    var clientSecret=App.settings.gdrive_clientSecret||'';
+    var redirectUri=App.settings.gdrive_redirectUri||'https://alonharazi3-web.github.io/mini-genius/oauth.html';
+
     Utils.toast('מתחבר...','info');
     try{
+      var resp=await fetch('https://oauth2.googleapis.com/token',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'code='+encodeURIComponent(code)
+          +'&client_id='+encodeURIComponent(clientId)
+          +'&client_secret='+encodeURIComponent(clientSecret)
+          +'&redirect_uri='+encodeURIComponent(redirectUri)
+          +'&grant_type=authorization_code'
+      });
+      var data=await resp.json();
+      _dbg('Token exchange response: '+JSON.stringify(data).substring(0,200));
+      if(data.error){Utils.toast('שגיאה: '+(data.error_description||data.error),'danger');return;}
+      if(!data.access_token){Utils.toast('לא התקבל טוקן','danger');return;}
+
+      Sync._token=data.access_token;
+      Sync._tokenExpiry=Date.now()+((data.expires_in||3600)*1000);
+      await DB.setSetting('gdrive_token',data.access_token);
+      await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
+      App.settings.gdrive_token=data.access_token;
+      App.settings.gdrive_tokenExpiry=String(Sync._tokenExpiry);
+
+      if(data.refresh_token){
+        await DB.setSetting('gdrive_refreshToken',data.refresh_token);
+        App.settings.gdrive_refreshToken=data.refresh_token;
+        _dbg('Refresh token saved — connection will persist indefinitely!');
+      }
+
+      Stages.closeModal();
       await Sync._findOrCreateSyncFile();
       Sync._startTimers();
-      Utils.toast('מחובר ל-Google Drive!','success');
+      Utils.toast('מחובר ל-Google Drive! (חיבור קבוע)','success');
+      Sync.renderSettings();
     }catch(e){
-      _dbg('Token apply err: '+e);
-      Utils.toast('טוקן לא תקף — נסה שוב','danger');
+      _dbg('Exchange err: '+e);Utils.toast('שגיאה: '+e.message,'danger');
     }
+  },
+
+  // Auto-refresh using stored refresh token
+  async _refreshAccessToken(){
+    var refreshToken=App.settings.gdrive_refreshToken||'';
+    var clientId=App.settings.gdrive_clientId||'';
+    var clientSecret=App.settings.gdrive_clientSecret||'';
+    if(!refreshToken||!clientId||!clientSecret){_dbg('Refresh: missing credentials');return false;}
+    try{
+      _dbg('Auto-refreshing access token...');
+      var resp=await fetch('https://oauth2.googleapis.com/token',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'refresh_token='+encodeURIComponent(refreshToken)
+          +'&client_id='+encodeURIComponent(clientId)
+          +'&client_secret='+encodeURIComponent(clientSecret)
+          +'&grant_type=refresh_token'
+      });
+      var data=await resp.json();
+      if(data.access_token){
+        Sync._token=data.access_token;
+        Sync._tokenExpiry=Date.now()+((data.expires_in||3600)*1000);
+        await DB.setSetting('gdrive_token',data.access_token);
+        await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
+        App.settings.gdrive_token=data.access_token;
+        _dbg('Token refreshed! Expires: '+new Date(Sync._tokenExpiry).toLocaleTimeString());
+        return true;
+      }
+      _dbg('Refresh failed: '+(data.error||'unknown'));return false;
+    }catch(e){_dbg('Refresh err: '+e);return false;}
   },
 
   async signOut(){
     Sync._token=null;Sync._tokenExpiry=0;Sync._syncFileId='';
     await DB.setSetting('gdrive_token','');
     await DB.setSetting('gdrive_tokenExpiry','0');
+    await DB.setSetting('gdrive_refreshToken','');
     await DB.setSetting('gdrive_fileId','');
     App.settings.gdrive_token='';
+    App.settings.gdrive_refreshToken='';
     Sync._stopTimers();
     Utils.toast('נותקת מ-Google Drive','success');
+    Sync.renderSettings();
   },
 
   // v3.4: Delete cloud data with local backup first
@@ -137,28 +185,27 @@ var Sync={
     }
   },
 
-  isSignedIn(){return Sync._token&&Sync._tokenExpiry>Date.now();},
+  isSignedIn(){return !!Sync._token;},
 
   // ===== DRIVE API HELPERS =====
-  _isUserAction:false,
-
   async _apiCall(url,opts){
     if(!Sync._token)throw new Error('Not signed in');
     opts=opts||{};opts.headers=opts.headers||{};
     opts.headers['Authorization']='Bearer '+Sync._token;
     var resp=await fetch(url,opts);
     if(resp.status===401){
-      // Token expired — try to silently refresh
-      _dbg('Sync: 401 — token expired');
-      if(Sync._isUserAction){
-        // User-initiated action — show paste dialog
-        Sync._showTokenPasteDialog();
-        throw new Error('Token expired — reconnecting');
-      }else{
-        // Background action — don't bother user, just log
-        _dbg('Sync: background 401, skipping silently');
-        throw new Error('Token expired (background)');
+      _dbg('Sync: 401 — attempting refresh...');
+      var refreshed=await Sync._refreshAccessToken();
+      if(refreshed){
+        opts.headers['Authorization']='Bearer '+Sync._token;
+        resp=await fetch(url,opts);
+        if(resp.ok)return resp;
       }
+      _dbg('Sync: refresh failed, need re-auth');
+      if(Sync._isUserAction){
+        Sync._showCodePasteDialog();
+      }
+      throw new Error('Token expired');
     }
     return resp;
   },
@@ -265,8 +312,13 @@ var Sync={
       await Sync._saveLocalBackup();
       var data=await Sync.exportLocal();
       var ok=await Sync.upload(data);
-      if(ok)Utils.toast('הועלו '+data.candidates.length+' מועמדים לענן','success');
-      else Utils.toast('שגיאה בהעלאה','danger');
+      if(ok){
+        await DB.setSetting('_lastSyncTime',new Date().toISOString());
+        App.settings._lastSyncTime=new Date().toISOString();
+        App.settings=await DB.getAllSettings();
+        Utils.toast('הועלו '+data.candidates.length+' מועמדים לענן','success');
+        Sync.renderSettings();
+      }else Utils.toast('שגיאה בהעלאה','danger');
     }catch(e){
       _dbg('fullUpload err: '+e);
       Utils.toast('שגיאת העלאה: '+e.message,'danger');
@@ -308,6 +360,7 @@ var Sync={
       Utils.toast('הורדו '+(remote.candidates||[]).length+' מועמדים מהענן','success');
       App.settings=await DB.getAllSettings();
       App.renderStageList(App.currentStage);App.updateBadges();
+      Sync.renderSettings();
     }catch(e){
       _dbg('fullDownload err: '+e);
       Utils.toast('שגיאת הורדה: '+e.message,'danger');
@@ -485,9 +538,8 @@ var Sync={
 
     App.settings=await DB.getAllSettings();
     App.renderStageList(App.currentStage);App.updateBadges();
+    Sync.renderSettings();
   },
-
-  // ===== AUTO TIMERS =====
   _startTimers:function(){
     Sync._stopTimers();
     // Upload every 30 min
@@ -592,17 +644,24 @@ var Sync={
     var html='<div class="admin-section"><h3>☁️ סנכרון Google Drive</h3>';
 
     if(!signedIn){
+      var clientSecret=App.settings.gdrive_clientSecret||'';
       html+='<div class="info-box">חבר את האפליקציה ל-Google Drive לסנכרון בין מכשירים.</div>'
       +'<div class="form-group"><label class="form-label">Google Client ID</label>'
       +'<input class="form-input" id="sClientId" dir="ltr" value="'+Utils.escHtml(clientId)+'" '
       +'placeholder="xxx.apps.googleusercontent.com" '
       +'onchange="Admin.saveSetting(\'gdrive_clientId\',this.value)"></div>'
+      +'<div class="form-group"><label class="form-label">Google Client Secret</label>'
+      +'<input class="form-input" id="sClientSecret" dir="ltr" type="password" value="'+Utils.escHtml(clientSecret)+'" '
+      +'placeholder="GOCSPX-..." '
+      +'onchange="Admin.saveSetting(\'gdrive_clientSecret\',this.value)"></div>'
       +'<button class="btn btn-primary" style="width:100%;" onclick="Sync.signIn()">🔑 התחבר ל-Google Drive</button>';
     }else{
       var lastSync=App.settings._lastSyncTime||'';
       var backupTime=App.settings._localBackupTime||'';
+      var hasRefresh=!!App.settings.gdrive_refreshToken;
       html+='<div class="info-box" style="background:#f0fdf4;border-color:#bbf7d0;">'
       +'✅ מחובר ל-Google Drive'
+      +(hasRefresh?' (חיבור קבוע 🔒)':' (טוקן זמני ⚠️)')
       +(lastSync?'<br>סנכרון אחרון: '+Utils.formatDateTime(lastSync):'')
       +(backupTime?'<br>גיבוי מקומי: '+Utils.formatDateTime(backupTime):'')+'</div>'
       +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">'

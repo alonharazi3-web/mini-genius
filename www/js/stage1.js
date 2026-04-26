@@ -125,8 +125,14 @@ const Stage1={
     }
     Stage1._cvData=null;Stage1._cvName=null;
     await Stage1._clearDraft();
+    // Force clear all form fields
+    ['fName','fFullName','fPhone','fReferrer','fNotes','fReminder'].forEach(function(id){
+      var el=Utils.id(id);if(el)el.value='';
+    });
     Utils.toast('מועמד נשמר! 🎉','success');
-    App.navigate('stage',1);
+    // Navigate to stage list (not form)
+    window.location.hash='stage/1';
+    App.renderStageList(1);
   },
   renderDetail(c){
     var html='';

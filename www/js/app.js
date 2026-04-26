@@ -698,6 +698,18 @@ const App={
       +'<div class="kpi"><div class="kpi-value" style="color:#B8860B;">'+groups.recommended.length+'</div><div class="kpi-label">⭐ מומלצים</div></div>'
       +'<div class="kpi"><div class="kpi-value" style="color:#4A90D9;">'+groups.employee.length+'</div><div class="kpi-label">🪪 עובדים</div></div>'
       +'</div>';
+      // v3.5: Branch breakdown for unit
+      if(groups.unit.length){
+        var branchCounts={};
+        groups.unit.forEach(function(c){var b=c.unitBranch||'none';branchCounts[b]=(branchCounts[b]||0)+1;});
+        html+='<div style="padding:4px 14px;font-size:.78rem;color:var(--text-light);">סניפים: ';
+        var parts=[];
+        Utils.UNIT_BRANCHES.forEach(function(b){
+          if(branchCounts[b.id])parts.push('<span style="background:'+b.color+';color:'+(b.id==='yellow'?'#333':'#fff')+';padding:1px 6px;border-radius:6px;">'+b.label+' '+branchCounts[b.id]+'</span>');
+        });
+        if(branchCounts.none)parts.push('ללא סניף '+branchCounts.none);
+        html+=parts.join(' ')+'</div>';
+      }
 
       var order=[{key:'eitan',icon:'🥇',label:'מומלצי איתן',color:'#FFD700'},
                  {key:'unit',icon:'🥈',label:'מומלצי יחידה',color:'#C0C0C0'},
@@ -777,9 +789,21 @@ const App={
     +'function render(){'
     +'var groups={eitan:[],unit:[],recommended:[],employee:[]};'
     +'candidates.forEach(function(c){if(groups[c.recommendation])groups[c.recommendation].push(c);});'
-    // Sort unit by branch
+    // Branch counts summary at top
+    +'var summary="<div style=\\"margin-bottom:16px;padding:12px;background:#fff;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.06);\\"><strong>סה\\"כ: </strong>";'
+    +'summary+=groups.eitan.length+" 🥇 | "+groups.unit.length+" 🥈 | "+groups.recommended.length+" ⭐ | "+groups.employee.length+" 🪪";'
+    // Branch breakdown for unit
+    +'if(groups.unit.length){'
+    +'var bc={};groups.unit.forEach(function(c){var b=c.unitBranch||"none";bc[b]=(bc[b]||0)+1;});'
+    +'summary+="<br><span style=\\"font-size:.82rem;color:#7F8C8D;\\">סניפים: ";'
+    +'["green","yellow","black","blue","gray"].forEach(function(k){'
+    +'if(bc[k])summary+="<span style=\\"display:inline-block;background:"+(branchColors[k]||"#ccc")+";color:"+(k==="yellow"?"#333":"#fff")+";font-size:.72rem;padding:2px 6px;border-radius:6px;margin:2px;\\">"+(branchLabels[k]||k)+" "+bc[k]+"</span> ";'
+    +'});'
+    +'if(bc.none)summary+="ללא סניף "+bc.none;'
+    +'summary+="</span>";}'
+    +'summary+="</div>";'
+    +'var html=summary;'
     +'groups.unit.sort(function(a,b){var order="green,yellow,black,blue,gray";return(order.indexOf(a.unitBranch||"z"))-(order.indexOf(b.unitBranch||"z"));});'
-    +'var html="";'
     +'[{key:"eitan",icon:"🥇"},{key:"unit",icon:"🥈"},{key:"recommended",icon:"⭐"},{key:"employee",icon:"🪪"}].forEach(function(g){'
     +'if(!groups[g.key].length)return;'
     +'html+="<h2>"+g.icon+" "+recLabels[g.key]+" ("+groups[g.key].length+")</h2>";'
