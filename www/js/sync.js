@@ -1,7 +1,7 @@
 'use strict';
 // Google Drive Sync — OAuth2 via InAppBrowser, Drive REST API v3
 var Sync={
-  _token:null,_tokenExpiry:0,_syncFileId:null,_autoUploadTimer:null,_autoCheckTimer:null,
+  _token:null,_tokenExpiry:0,_syncFileId:null,_autoUploadTimer:null,_autoCheckTimer:null,_tokenRefreshTimer:null,
   _lastSyncHash:'',_currentRecruiter:'',
 
   // ===== INIT — start timers if sync is configured =====
@@ -13,10 +13,14 @@ var Sync={
     Sync._currentRecruiter=App.settings.currentRecruiter||'';
     if(clientId&&token){
       Sync._token=token;Sync._tokenExpiry=expiry;
+      _dbg('Sync init: token loaded, refreshToken: '+(App.settings.gdrive_refreshToken?'YES':'NO'));
       if(expiry>Date.now()){
-        _dbg('Sync: token loaded, expires '+new Date(expiry).toLocaleTimeString());
+        _dbg('Sync: token valid, expires '+new Date(expiry).toLocaleTimeString());
+      }else if(App.settings.gdrive_refreshToken){
+        _dbg('Sync: token expired but have refresh token — refreshing now');
+        Sync._refreshAccessToken().catch(function(e){_dbg('Init refresh err: '+e);});
       }else{
-        _dbg('Sync: token loaded but expired — auto-refresh will attempt renewal');
+        _dbg('Sync: token expired, no refresh token');
       }
       Sync._startTimers();
     }
@@ -81,26 +85,55 @@ var Sync={
 
   async _exchangeCode(){
     var code=(Utils.id('pasteCode')?.value||'').trim();
-    if(!code||code.length<10){Utils.toast('קוד לא תקין','danger');return;}
+    if(!code||code.length<5){Utils.toast('קוד לא תקין','danger');return;}
     var clientId=App.settings.gdrive_clientId||'';
     var clientSecret=App.settings.gdrive_clientSecret||'';
     var redirectUri=App.settings.gdrive_redirectUri||'https://alonharazi3-web.github.io/mini-genius/oauth.html';
 
-    Utils.toast('מתחבר...','info');
+    if(!clientSecret){
+      Utils.toast('חסר Client Secret! הגדר בניהול → Google Drive','danger');
+      _dbg('ERROR: No client secret configured');
+      return;
+    }
+
+    _dbg('=== CODE EXCHANGE ===');
+    _dbg('Client ID: '+clientId.substring(0,20)+'...');
+    _dbg('Client Secret: '+clientSecret.substring(0,8)+'...');
+    _dbg('Redirect URI: '+redirectUri);
+    _dbg('Code: '+code.substring(0,15)+'...');
+
+    Utils.toast('מחליף קוד לטוקן...','info');
     try{
+      var body='code='+encodeURIComponent(code)
+        +'&client_id='+encodeURIComponent(clientId)
+        +'&client_secret='+encodeURIComponent(clientSecret)
+        +'&redirect_uri='+encodeURIComponent(redirectUri)
+        +'&grant_type=authorization_code';
+      _dbg('POST body: '+body.substring(0,100)+'...');
+
       var resp=await fetch('https://oauth2.googleapis.com/token',{
         method:'POST',
         headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body:'code='+encodeURIComponent(code)
-          +'&client_id='+encodeURIComponent(clientId)
-          +'&client_secret='+encodeURIComponent(clientSecret)
-          +'&redirect_uri='+encodeURIComponent(redirectUri)
-          +'&grant_type=authorization_code'
+        body:body
       });
-      var data=await resp.json();
-      _dbg('Token exchange response: '+JSON.stringify(data).substring(0,200));
-      if(data.error){Utils.toast('שגיאה: '+(data.error_description||data.error),'danger');return;}
-      if(!data.access_token){Utils.toast('לא התקבל טוקן','danger');return;}
+      var raw=await resp.text();
+      _dbg('Response status: '+resp.status);
+      _dbg('Response body: '+raw.substring(0,300));
+
+      var data=JSON.parse(raw);
+      if(data.error){
+        _dbg('TOKEN ERROR: '+data.error+' — '+data.error_description);
+        Utils.toast('שגיאה: '+(data.error_description||data.error),'danger');
+        return;
+      }
+      if(!data.access_token){
+        _dbg('NO ACCESS TOKEN in response!');
+        Utils.toast('לא התקבל טוקן','danger');
+        return;
+      }
+
+      _dbg('✅ access_token received, expires_in: '+data.expires_in);
+      _dbg('✅ refresh_token received: '+(data.refresh_token?'YES ('+data.refresh_token.substring(0,10)+'...)':'NO!!!'));
 
       Sync._token=data.access_token;
       Sync._tokenExpiry=Date.now()+((data.expires_in||3600)*1000);
@@ -112,16 +145,20 @@ var Sync={
       if(data.refresh_token){
         await DB.setSetting('gdrive_refreshToken',data.refresh_token);
         App.settings.gdrive_refreshToken=data.refresh_token;
-        _dbg('Refresh token saved — connection will persist indefinitely!');
+        _dbg('✅ Refresh token SAVED to DB — connection will auto-renew!');
+      }else{
+        _dbg('⚠️ NO refresh_token! Google only sends it on FIRST authorization with prompt=consent');
+        _dbg('⚠️ If you already authorized before, revoke access at https://myaccount.google.com/permissions then try again');
       }
 
       Stages.closeModal();
       await Sync._findOrCreateSyncFile();
       Sync._startTimers();
-      Utils.toast('מחובר ל-Google Drive! (חיבור קבוע)','success');
+      Utils.toast(data.refresh_token?'מחובר לצמיתות! 🔒':'מחובר (ללא refresh token ⚠️)','success');
       Sync.renderSettings();
     }catch(e){
-      _dbg('Exchange err: '+e);Utils.toast('שגיאה: '+e.message,'danger');
+      _dbg('Exchange EXCEPTION: '+e);
+      Utils.toast('שגיאה: '+e.message,'danger');
     }
   },
 
@@ -130,9 +167,11 @@ var Sync={
     var refreshToken=App.settings.gdrive_refreshToken||'';
     var clientId=App.settings.gdrive_clientId||'';
     var clientSecret=App.settings.gdrive_clientSecret||'';
-    if(!refreshToken||!clientId||!clientSecret){_dbg('Refresh: missing credentials');return false;}
+    if(!refreshToken){_dbg('Refresh: NO refresh token stored');return false;}
+    if(!clientId||!clientSecret){_dbg('Refresh: missing clientId/clientSecret');return false;}
     try{
-      _dbg('Auto-refreshing access token...');
+      _dbg('=== AUTO REFRESH ===');
+      _dbg('Refresh token: '+refreshToken.substring(0,10)+'...');
       var resp=await fetch('https://oauth2.googleapis.com/token',{
         method:'POST',
         headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -141,18 +180,25 @@ var Sync={
           +'&client_secret='+encodeURIComponent(clientSecret)
           +'&grant_type=refresh_token'
       });
-      var data=await resp.json();
+      var raw=await resp.text();
+      _dbg('Refresh response: '+resp.status+' — '+raw.substring(0,200));
+      var data=JSON.parse(raw);
       if(data.access_token){
         Sync._token=data.access_token;
         Sync._tokenExpiry=Date.now()+((data.expires_in||3600)*1000);
         await DB.setSetting('gdrive_token',data.access_token);
         await DB.setSetting('gdrive_tokenExpiry',String(Sync._tokenExpiry));
         App.settings.gdrive_token=data.access_token;
-        _dbg('Token refreshed! Expires: '+new Date(Sync._tokenExpiry).toLocaleTimeString());
+        _dbg('✅ Token refreshed! Expires: '+new Date(Sync._tokenExpiry).toLocaleTimeString());
         return true;
       }
-      _dbg('Refresh failed: '+(data.error||'unknown'));return false;
-    }catch(e){_dbg('Refresh err: '+e);return false;}
+      _dbg('❌ Refresh FAILED: '+(data.error||'unknown')+' — '+(data.error_description||''));
+      if(data.error==='invalid_grant'){
+        _dbg('⚠️ Refresh token was revoked or expired. Need to re-authorize.');
+        _dbg('⚠️ Check: Google Cloud Console → OAuth consent screen → Publishing status should be "In production"');
+      }
+      return false;
+    }catch(e){_dbg('Refresh EXCEPTION: '+e);return false;}
   },
 
   async signOut(){
@@ -542,23 +588,31 @@ var Sync={
   },
   _startTimers:function(){
     Sync._stopTimers();
-    // Upload every 30 min
     Sync._autoUploadTimer=setInterval(function(){
       if(Sync.isSignedIn()){
         _dbg('Sync: auto-upload (30min)');
         Sync.fullUpload().catch(function(e){_dbg('Auto-upload err: '+e);});
       }
     },30*60*1000);
-    // Check for changes every 60 min
     Sync._autoCheckTimer=setInterval(function(){
       if(Sync.isSignedIn())Sync._checkRemoteChanges();
     },60*60*1000);
-    _dbg('Sync: timers started (upload 30m, check 60m)');
+    // v3.5: Proactive token refresh — every 1 min check if token expires soon
+    Sync._tokenRefreshTimer=setInterval(function(){
+      if(!Sync._token||!App.settings.gdrive_refreshToken)return;
+      var timeLeft=Sync._tokenExpiry-Date.now();
+      if(timeLeft<5*60*1000){
+        _dbg('Sync: proactive refresh ('+Math.round(timeLeft/1000)+'s left)');
+        Sync._refreshAccessToken().catch(function(e){_dbg('Refresh err: '+e);});
+      }
+    },60*1000);
+    _dbg('Sync: timers started (upload 30m, check 60m, refresh 1m)');
   },
 
   _stopTimers:function(){
     if(Sync._autoUploadTimer){clearInterval(Sync._autoUploadTimer);Sync._autoUploadTimer=null;}
     if(Sync._autoCheckTimer){clearInterval(Sync._autoCheckTimer);Sync._autoCheckTimer=null;}
+    if(Sync._tokenRefreshTimer){clearInterval(Sync._tokenRefreshTimer);Sync._tokenRefreshTimer=null;}
   },
 
   async _checkRemoteChanges(){

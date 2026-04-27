@@ -135,6 +135,13 @@ const Stages={
   async setDecision(id,stageId,decision){
     var c=await DB.getCandidate(id);c.status=decision;
     c['stage'+stageId+'_decision']=decision;c['stage'+stageId+'_completedAt']=new Date().toISOString();
+    // v3.5: Auto-stop treatment when fail in stage 1 (לידים)
+    if(stageId===1&&decision==='fail'){
+      c.status='stopped';
+      c.stoppedAt=new Date().toISOString();
+      c.stoppedReason='לא עבר שלב לידים';
+      DB.logAction('הפסקת טיפול אוטומטית',c.name+' — לא עבר בלידים');
+    }
     await DB.saveCandidate(c);DB.logAction('החלטה',c.name+' - '+decision);
     App.renderCandidateView(id);
   },
